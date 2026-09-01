@@ -11,6 +11,7 @@ export type AuthActionState = {
 export type RequestPasswordResetState = {
   error: string | null;
   sent: boolean;
+  email: string | null;
 };
 
 export async function signIn(
@@ -75,7 +76,7 @@ export async function requestPasswordReset(
 ): Promise<RequestPasswordResetState> {
   const email = String(formData.get("email") ?? "");
   if (!email) {
-    return { error: "Email is required.", sent: false };
+    return { error: "Email is required.", sent: false, email: null };
   }
 
   const supabase = await createClient();
@@ -85,9 +86,46 @@ export async function requestPasswordReset(
   });
 
   if (error) {
-    return { error: error.message, sent: false };
+    return { error: error.message, sent: false, email: null };
   }
-  return { error: null, sent: true };
+  return { error: null, sent: true, email };
+}
+
+export type ConfirmPasswordResetState = {
+  error: string | null;
+};
+
+export async function confirmPasswordReset(
+  _prevState: ConfirmPasswordResetState,
+  formData: FormData,
+): Promise<ConfirmPasswordResetState> {
+  const email = String(formData.get("email") ?? "");
+  const token = String(formData.get("token") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  if (!email || !token) {
+    return { error: "Email and reset code are required." };
+  }
+  if (password.length < 8) {
+    return { error: "Password must be at least 8 characters." };
+  }
+
+  const supabase = await createClient();
+  const { error: verifyError } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "recovery",
+  });
+  if (verifyError) {
+    return { error: verifyError.message };
+  }
+
+  const { error: updateError } = await supabase.auth.updateUser({ password });
+  if (updateError) {
+    return { error: updateError.message };
+  }
+
+  redirect("/overview");
 }
 
 export async function updatePassword(

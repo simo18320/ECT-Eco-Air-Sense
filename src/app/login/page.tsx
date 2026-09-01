@@ -6,8 +6,10 @@ import {
   signIn,
   signUp,
   requestPasswordReset,
+  confirmPasswordReset,
   type AuthActionState,
   type RequestPasswordResetState,
+  type ConfirmPasswordResetState,
 } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +25,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const initialState: AuthActionState = { error: null };
-const initialResetState: RequestPasswordResetState = { error: null, sent: false };
+const initialResetState: RequestPasswordResetState = { error: null, sent: false, email: null };
+const initialConfirmState: ConfirmPasswordResetState = { error: null };
 
 export default function LoginPage() {
   const [signInState, signInAction, signInPending] = useActionState(signIn, initialState);
@@ -31,6 +34,10 @@ export default function LoginPage() {
   const [resetState, resetAction, resetPending] = useActionState(
     requestPasswordReset,
     initialResetState,
+  );
+  const [confirmState, confirmAction, confirmPending] = useActionState(
+    confirmPasswordReset,
+    initialConfirmState,
   );
   const [showReset, setShowReset] = useState(false);
 
@@ -101,10 +108,53 @@ export default function LoginPage() {
                         <AlertDescription>{resetState.error}</AlertDescription>
                       </Alert>
                     )}
-                    {resetState.sent ? (
-                      <p className="text-sm text-muted-foreground">
-                        If an account exists for that email, a reset link has been sent.
-                      </p>
+                    {resetState.sent && resetState.email ? (
+                      <>
+                        <p className="text-sm text-muted-foreground">
+                          If an account exists for that email, a message was sent with a reset
+                          link and a 6-digit code. The code is more reliable — some email
+                          providers&apos; link scanners can invalidate the link before you click
+                          it, so enter the code below instead.
+                        </p>
+                        {confirmState.error && (
+                          <Alert variant="destructive">
+                            <AlertDescription>{confirmState.error}</AlertDescription>
+                          </Alert>
+                        )}
+                        <form action={confirmAction} className="space-y-3">
+                          <input type="hidden" name="email" value={resetState.email} />
+                          <div className="space-y-2">
+                            <Label htmlFor="reset-token">6-digit code</Label>
+                            <Input
+                              id="reset-token"
+                              name="token"
+                              type="text"
+                              inputMode="numeric"
+                              required
+                              autoComplete="one-time-code"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="reset-new-password">New password</Label>
+                            <Input
+                              id="reset-new-password"
+                              name="password"
+                              type="password"
+                              required
+                              minLength={8}
+                              autoComplete="new-password"
+                            />
+                          </div>
+                          <Button
+                            type="submit"
+                            variant="outline"
+                            className="w-full"
+                            disabled={confirmPending}
+                          >
+                            {confirmPending ? "Updating..." : "Update password"}
+                          </Button>
+                        </form>
+                      </>
                     ) : (
                       <>
                         <div className="space-y-2">
