@@ -1,8 +1,14 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Anchor } from "lucide-react";
-import { signIn, signUp, type AuthActionState } from "@/lib/actions/auth";
+import {
+  signIn,
+  signUp,
+  requestPasswordReset,
+  type AuthActionState,
+  type RequestPasswordResetState,
+} from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -17,10 +23,16 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 
 const initialState: AuthActionState = { error: null };
+const initialResetState: RequestPasswordResetState = { error: null, sent: false };
 
 export default function LoginPage() {
   const [signInState, signInAction, signInPending] = useActionState(signIn, initialState);
   const [signUpState, signUpAction, signUpPending] = useActionState(signUp, initialState);
+  const [resetState, resetAction, resetPending] = useActionState(
+    requestPasswordReset,
+    initialResetState,
+  );
+  const [showReset, setShowReset] = useState(false);
 
   return (
     <div className="min-h-screen w-full flex items-center justify-center bg-sidebar px-4">
@@ -73,7 +85,50 @@ export default function LoginPage() {
                   <Button type="submit" className="w-full" disabled={signInPending}>
                     {signInPending ? "Signing in..." : "Sign In"}
                   </Button>
+                  <button
+                    type="button"
+                    onClick={() => setShowReset((v) => !v)}
+                    className="text-xs text-muted-foreground hover:text-foreground underline underline-offset-2"
+                  >
+                    Forgot password?
+                  </button>
                 </form>
+
+                {showReset && (
+                  <form action={resetAction} className="space-y-3 mt-4 pt-4 border-t">
+                    {resetState.error && (
+                      <Alert variant="destructive">
+                        <AlertDescription>{resetState.error}</AlertDescription>
+                      </Alert>
+                    )}
+                    {resetState.sent ? (
+                      <p className="text-sm text-muted-foreground">
+                        If an account exists for that email, a reset link has been sent.
+                      </p>
+                    ) : (
+                      <>
+                        <div className="space-y-2">
+                          <Label htmlFor="reset-email">Email</Label>
+                          <Input
+                            id="reset-email"
+                            name="email"
+                            type="email"
+                            required
+                            autoComplete="email"
+                          />
+                        </div>
+                        <Button
+                          type="submit"
+                          variant="outline"
+                          className="w-full"
+                          disabled={resetPending}
+                        >
+                          {resetPending ? "Sending..." : "Send reset link"}
+                        </Button>
+                      </>
+                    )}
+                  </form>
+                )}
               </TabsContent>
 
               <TabsContent value="signup" className="mt-4">
