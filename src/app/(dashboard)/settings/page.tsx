@@ -5,6 +5,7 @@ import { getYachtContext } from "@/lib/data/current-yacht";
 import { getUserYachtAccessMap } from "@/lib/data/user-yacht-access";
 import { BrandingForm } from "@/components/settings/branding-form";
 import { UserRoleTable } from "@/components/settings/user-role-table";
+import { CreateUserDialog } from "@/components/settings/create-user-dialog";
 import { ScoringWeightsForm } from "@/components/settings/scoring-weights-form";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -67,13 +68,16 @@ export default async function SettingsPage() {
       </Card>
 
       <Card>
-        <CardHeader>
-          <CardTitle>Users</CardTitle>
-          <CardDescription>
-            New team members create their own account from the sign-in screen, then an admin
-            assigns their role here. Captains and viewers only see the yachts checked under Yacht
-            Access — admins and technical staff always see the full fleet.
-          </CardDescription>
+        <CardHeader className="flex flex-row items-start justify-between gap-4">
+          <div>
+            <CardTitle>Users</CardTitle>
+            <CardDescription>
+              Create an account directly with a password you set, or team members can sign
+              themselves up from the sign-in screen. Captains and viewers only see the yachts
+              checked under Yacht Access — admins and technical staff always see the full fleet.
+            </CardDescription>
+          </div>
+          {user.role === "admin" && <CreateUserDialog />}
         </CardHeader>
         <CardContent>
           {user.role === "admin" ? (
