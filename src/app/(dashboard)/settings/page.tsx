@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/data/current-user";
+import { getYachtContext } from "@/lib/data/current-yacht";
+import { getUserYachtAccessMap } from "@/lib/data/user-yacht-access";
 import { BrandingForm } from "@/components/settings/branding-form";
 import { UserRoleTable } from "@/components/settings/user-role-table";
 import { ScoringWeightsForm } from "@/components/settings/scoring-weights-form";
@@ -21,15 +23,18 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   const supabase = await createClient();
-  const [{ data: users }, { data: scoringConfigs }, { data: thresholds }] = await Promise.all([
-    supabase.from("app_users").select("*").order("created_at", { ascending: true }),
-    supabase
-      .from("scoring_configurations")
-      .select("config_type, weights")
-      .eq("company_id", user.companyId)
-      .is("yacht_id", null),
-    supabase.from("thresholds").select("*").eq("company_id", user.companyId).is("yacht_id", null).order("parameter"),
-  ]);
+  const [{ data: users }, { data: scoringConfigs }, { data: thresholds }, { allYachts }, yachtAccessByUser] =
+    await Promise.all([
+      supabase.from("app_users").select("*").order("created_at", { ascending: true }),
+      supabase
+        .from("scoring_configurations")
+        .select("config_type, weights")
+        .eq("company_id", user.companyId)
+        .is("yacht_id", null),
+      supabase.from("thresholds").select("*").eq("company_id", user.companyId).is("yacht_id", null).order("parameter"),
+      getYachtContext(),
+      getUserYachtAccessMap(),
+    ]);
 
   const weightsByType = new Map<Enums<"scoring_config_type">, Record<string, number>>();
   for (const c of scoringConfigs ?? []) weightsByType.set(c.config_type, c.weights as Record<string, number>);
@@ -66,12 +71,18 @@ export default async function SettingsPage() {
           <CardTitle>Users</CardTitle>
           <CardDescription>
             New team members create their own account from the sign-in screen, then an admin
-            assigns their role here.
+            assigns their role here. Captains and viewers only see the yachts checked under Yacht
+            Access — admins and technical staff always see the full fleet.
           </CardDescription>
         </CardHeader>
         <CardContent>
           {user.role === "admin" ? (
-            <UserRoleTable users={users ?? []} currentUserId={user.id} />
+            <UserRoleTable
+              users={users ?? []}
+              currentUserId={user.id}
+              yachts={allYachts.map((y) => ({ id: y.id, name: y.name }))}
+              yachtAccessByUser={yachtAccessByUser}
+            />
           ) : (
             <Alert>
               <AlertDescription>Only admins can manage user roles.</AlertDescription>

@@ -7,6 +7,8 @@ export type Json =
   | Json[]
 
 export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
     PostgrestVersion: "14.5"
   }
@@ -888,6 +890,39 @@ export type Database = {
           },
         ]
       }
+      user_yacht_access: {
+        Row: {
+          created_at: string
+          user_id: string
+          yacht_id: string
+        }
+        Insert: {
+          created_at?: string
+          user_id: string
+          yacht_id: string
+        }
+        Update: {
+          created_at?: string
+          user_id?: string
+          yacht_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_yacht_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "app_users"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_yacht_access_yacht_id_fkey"
+            columns: ["yacht_id"]
+            isOneToOne: false
+            referencedRelation: "yachts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       yachts: {
         Row: {
           build_year: number | null
@@ -971,6 +1006,10 @@ export type Database = {
       current_user_role: {
         Args: never
         Returns: Database["public"]["Enums"]["user_role"]
+      }
+      user_can_access_yacht: {
+        Args: { target_yacht_id: string }
+        Returns: boolean
       }
     }
     Enums: {
