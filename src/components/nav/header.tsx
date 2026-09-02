@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import { Anchor, Menu } from "lucide-react";
+import { Menu } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -62,13 +62,11 @@ export function Header({
           <SheetContent side="left" className="w-64 bg-sidebar text-sidebar-foreground p-0 border-sidebar-border">
             <SheetTitle className="sr-only">Navigation</SheetTitle>
             <div className="flex items-center gap-2 px-5 h-16 border-b border-sidebar-border">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent shrink-0">
-                <Anchor className="h-4 w-4 text-accent-foreground" />
+              <div className="flex h-8 px-1.5 items-center justify-center rounded-md bg-white shrink-0">
+                <Image src="/logo.png" alt="Eco Air Sense" width={64} height={34} className="h-5 w-auto object-contain" />
               </div>
               <span className="text-sm font-semibold tracking-tight leading-tight">
-                Environmental
-                <br />
-                Monitoring
+                Monitoring Platform
               </span>
             </div>
             <NavLinks captainMode={captainMode} onNavigate={() => setMobileNavOpen(false)} />

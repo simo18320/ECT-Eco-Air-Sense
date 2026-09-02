@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Anchor } from "lucide-react";
+import Image from "next/image";
 import {
   signIn,
   signUp,
@@ -45,11 +45,11 @@ export default function LoginPage() {
     <div className="min-h-screen w-full flex items-center justify-center bg-sidebar px-4">
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center gap-2 mb-8">
-          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent">
-            <Anchor className="h-6 w-6 text-accent-foreground" />
+          <div className="flex px-4 py-3 items-center justify-center rounded-xl bg-white">
+            <Image src="/logo.png" alt="Eco Air Sense" width={192} height={101} className="h-14 w-auto object-contain" />
           </div>
           <h1 className="text-xl font-semibold text-sidebar-foreground tracking-tight">
-            Yacht Environmental Monitoring
+            Monitoring Platform
           </h1>
           <p className="text-sm text-sidebar-foreground/60">Eco Cleaning Technologies</p>
         </div>

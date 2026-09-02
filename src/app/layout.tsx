@@ -15,7 +15,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Yacht Environmental Monitoring",
+  title: "Eco Air Sense Monitoring Platform",
   description:
     "Environmental and biological-risk monitoring dashboard for superyachts, by Eco Cleaning Technologies.",
 };

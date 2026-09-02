@@ -186,7 +186,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
               {meta.companyName.toUpperCase()}
             </Text>
             <Text style={{ color: "white", fontSize: 26, fontFamily: "Helvetica-Bold", marginBottom: 6 }}>
-              Yacht Environmental Monitoring Report
+              Eco Air Sense Monitoring Report
             </Text>
             <Text style={{ color: "#c9d2e8", fontSize: 14 }}>{yacht.name}</Text>
           </View>
