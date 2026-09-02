@@ -14,8 +14,7 @@ import { Info } from "lucide-react";
 const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
 
 export default async function AiInsightsPage() {
-  const user = await getCurrentUser();
-  const { yacht } = await getYachtContext();
+  const [user, { yacht }] = await Promise.all([getCurrentUser(), getYachtContext()]);
   const canGenerate = user?.role === "admin" || user?.role === "technical";
 
   if (!yacht) {

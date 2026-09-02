@@ -17,8 +17,7 @@ import {
 } from "@/components/ui/table";
 
 export default async function ReportsPage() {
-  const user = await getCurrentUser();
-  const { yacht } = await getYachtContext();
+  const [user, { yacht }] = await Promise.all([getCurrentUser(), getYachtContext()]);
   const canGenerate = user?.role === "admin" || user?.role === "technical";
 
   if (!yacht) {

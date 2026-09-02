@@ -8,13 +8,11 @@ export default async function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const user = await getCurrentUser();
+  const [user, { yacht, allYachts }] = await Promise.all([getCurrentUser(), getYachtContext()]);
 
   if (!user) {
     redirect("/login");
   }
-
-  const { yacht, allYachts } = await getYachtContext();
 
   return (
     <DashboardShell user={user} yachts={allYachts} selectedYachtId={yacht?.id ?? null}>

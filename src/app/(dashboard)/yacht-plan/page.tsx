@@ -17,9 +17,7 @@ export default async function YachtPlanPage({
 }: {
   searchParams: Promise<{ deck?: string }>;
 }) {
-  const sp = await searchParams;
-  const user = await getCurrentUser();
-  const { yacht } = await getYachtContext();
+  const [sp, user, { yacht }] = await Promise.all([searchParams, getCurrentUser(), getYachtContext()]);
   const canEdit = user?.role === "admin" || user?.role === "technical";
 
   if (!yacht) {

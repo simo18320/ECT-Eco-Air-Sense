@@ -49,8 +49,10 @@ export default async function AnalysisPage({
     );
   }
 
-  const points = await getMonitoringPoints(yacht.id);
-  const latestReadings = await getLatestReadingsByYacht(yacht.id);
+  const [points, latestReadings] = await Promise.all([
+    getMonitoringPoints(yacht.id),
+    getLatestReadingsByYacht(yacht.id),
+  ]);
   const availableParameters = Array.from(new Set(latestReadings.map((r) => r.parameter)));
 
   if (points.length === 0 || availableParameters.length === 0) {

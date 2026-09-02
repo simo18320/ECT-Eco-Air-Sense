@@ -11,8 +11,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 
 export default async function LivePage() {
-  const user = await getCurrentUser();
-  const { yacht } = await getYachtContext();
+  const [user, { yacht }] = await Promise.all([getCurrentUser(), getYachtContext()]);
 
   if (!yacht) {
     return (
