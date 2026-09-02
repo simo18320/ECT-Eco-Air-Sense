@@ -5,6 +5,7 @@ import { getMonitoringPoints, getLatestReadingsByYacht } from "@/lib/data/monito
 import { getImportHistory } from "@/lib/data/imports";
 import { getCurrentUser } from "@/lib/data/current-user";
 import { ImportDialog } from "@/components/import/import-dialog";
+import { AircareSyncButton } from "@/components/import/aircare-sync-button";
 import { ImportHistoryTable } from "@/components/import/import-history-table";
 import { LatestReadingsGrid } from "@/components/import/latest-readings-grid";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -35,6 +36,7 @@ export default async function LivePage() {
   }
 
   const canImport = user?.role === "admin" || user?.role === "technical";
+  const hasAircareSync = canImport && yacht.id === process.env.AIRCARE_YACHT_ID;
   const [points, readings, importJobs] = await Promise.all([
     getMonitoringPoints(yacht.id),
     getLatestReadingsByYacht(yacht.id),
@@ -50,7 +52,10 @@ export default async function LivePage() {
             Current readings for {yacht.name}.
           </p>
         </div>
-        {canImport && <ImportDialog yachtId={yacht.id} />}
+        <div className="flex items-center gap-2">
+          {hasAircareSync && <AircareSyncButton yachtId={yacht.id} />}
+          {canImport && <ImportDialog yachtId={yacht.id} />}
+        </div>
       </div>
 
       <LatestReadingsGrid points={points} readings={readings} />
@@ -58,7 +63,7 @@ export default async function LivePage() {
       <Card>
         <CardHeader>
           <CardTitle>Import History</CardTitle>
-          <CardDescription>Every AirCare export uploaded for this yacht.</CardDescription>
+          <CardDescription>Every AirCare export uploaded or synced for this yacht.</CardDescription>
         </CardHeader>
         <CardContent>
           <ImportHistoryTable jobs={importJobs} />
