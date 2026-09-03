@@ -6,6 +6,7 @@ import { getDecks, getGaPlanForDeck, getPinsForGaPlan, getUnpinnedMonitoringPoin
 import { getLatestReadingsByYacht, type LatestReading } from "@/lib/data/monitoring-points";
 import { getPointScores } from "@/lib/data/scoring";
 import { getScoringWeights } from "@/lib/data/scoring-config";
+import { getEffectiveThresholds } from "@/lib/data/thresholds";
 import { GaPlanCanvas } from "@/components/ga-plan/ga-plan-canvas";
 import { AddDeckDialog } from "@/components/ga-plan/add-deck-dialog";
 import { Card, CardContent } from "@/components/ui/card";
@@ -66,13 +67,14 @@ export default async function YachtPlanPage({
 
   const activeDeck = decks.find((d) => d.id === sp.deck) ?? decks[0];
   const gaPlan = await getGaPlanForDeck(activeDeck.id);
-  const [pins, unpinnedPoints, readings] = gaPlan
+  const [pins, unpinnedPoints, readings, thresholds] = gaPlan
     ? await Promise.all([
         getPinsForGaPlan(gaPlan.id),
         getUnpinnedMonitoringPoints(yacht.id, gaPlan.id),
         getLatestReadingsByYacht(yacht.id),
+        getEffectiveThresholds(yacht.id),
       ])
-    : [[], [], []];
+    : [[], [], [], []];
 
   const readingsByPoint: Record<string, LatestReading[]> = {};
   for (const r of readings) {
@@ -130,6 +132,7 @@ export default async function YachtPlanPage({
           unpinnedPoints={unpinnedPoints}
           readingsByPoint={readingsByPoint}
           scoresByPoint={scoresByPoint}
+          thresholds={thresholds}
           canEdit={canEdit}
         />
       )}
