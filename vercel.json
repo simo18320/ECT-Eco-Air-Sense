@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/aircare-sync",
       "schedule": "0 6 * * *"
+    },
+    {
+      "path": "/api/cron/weekly-reminder",
+      "schedule": "0 8 * * 1"
     }
   ]
 }

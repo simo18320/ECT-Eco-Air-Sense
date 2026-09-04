@@ -21,11 +21,25 @@ export async function updateMonitoringPoint(
   if (!name) return { error: "Name is required.", success: false };
   const roomLocation = String(formData.get("room_location") ?? "").trim() || null;
   const status = String(formData.get("status") ?? "active") as Enums<"monitoring_point_status">;
+  const code = String(formData.get("code") ?? "").trim() || null;
 
   const supabase = await createClient();
+
+  if (code) {
+    const { data: conflict } = await supabase
+      .from("monitoring_points")
+      .select("id")
+      .eq("code", code)
+      .neq("id", pointId)
+      .maybeSingle();
+    if (conflict) {
+      return { error: "That sensor is already assigned to another monitoring point.", success: false };
+    }
+  }
+
   const { error } = await supabase
     .from("monitoring_points")
-    .update({ name, room_location: roomLocation, status, active: status !== "inactive" })
+    .update({ name, room_location: roomLocation, status, active: status !== "inactive", code })
     .eq("id", pointId);
 
   if (error) return { error: error.message, success: false };
@@ -57,6 +71,51 @@ export async function updateMonitoringPoint(
       await supabase.from("sensors").insert(sensorPayload);
     }
   }
+
+  revalidatePath("/locations");
+  revalidatePath("/live");
+  return { error: null, success: true };
+}
+
+export async function createMonitoringPoint(
+  yachtId: string,
+  _prevState: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated.", success: false };
+  if (user.role !== "admin" && user.role !== "technical") {
+    return { error: "You do not have permission to add monitoring points.", success: false };
+  }
+
+  const name = String(formData.get("name") ?? "").trim();
+  if (!name) return { error: "Name is required.", success: false };
+  const roomLocation = String(formData.get("room_location") ?? "").trim() || null;
+  const code = String(formData.get("code") ?? "").trim() || null;
+
+  const supabase = await createClient();
+
+  if (code) {
+    const { data: conflict } = await supabase
+      .from("monitoring_points")
+      .select("id")
+      .eq("code", code)
+      .maybeSingle();
+    if (conflict) {
+      return { error: "That sensor is already assigned to another monitoring point.", success: false };
+    }
+  }
+
+  const { error } = await supabase.from("monitoring_points").insert({
+    yacht_id: yachtId,
+    name,
+    room_location: roomLocation,
+    code,
+    status: "active",
+    active: true,
+  });
+
+  if (error) return { error: error.message, success: false };
 
   revalidatePath("/locations");
   revalidatePath("/live");

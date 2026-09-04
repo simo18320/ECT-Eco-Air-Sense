@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { AircareDeviceSelect } from "./aircare-device-select";
 import type { Tables } from "@/types/database";
 
 type MonitoringPoint = Tables<"monitoring_points"> & { sensors: Tables<"sensors">[] };
@@ -69,9 +70,8 @@ export function MonitoringPointForm({
             </SelectContent>
           </Select>
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="sensor_code">Sensor Code</Label>
-          <Input id="sensor_code" value={point.code ?? ""} disabled />
+        <div className="space-y-2 col-span-2">
+          <AircareDeviceSelect name="code" currentCode={point.code} excludePointId={point.id} />
         </div>
 
         <div className="col-span-2 pt-2 border-t border-border mt-1">

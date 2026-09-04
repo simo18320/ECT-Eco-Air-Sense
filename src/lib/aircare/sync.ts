@@ -19,6 +19,7 @@ const RESOURCE_TO_PARAMETER: Record<string, string> = {
 
 export type AircareSyncSummary = {
   jobId: string;
+  yachtId: string;
   recordsFetched: number;
   recordsImported: number;
   recordsSkipped: number;
@@ -116,6 +117,7 @@ export async function syncAircareData(
 
     return {
       jobId: job.id,
+      yachtId,
       recordsFetched: readings.length,
       recordsImported: imported,
       recordsSkipped: skipped,
@@ -125,4 +127,26 @@ export async function syncAircareData(
     await supabase.from("import_jobs").update({ status: "failed" }).eq("id", job.id);
     throw err;
   }
+}
+
+/**
+ * AirCare is a single shared account: every yacht's sensors report to the
+ * same `/last-data` feed, distinguished only by device code. Syncing "all
+ * yachts" just means running the per-yacht sync (which already scopes
+ * readings to that yacht's monitoring point codes) for every yacht on file,
+ * so a new yacht's devices get picked up alongside existing ones without any
+ * per-yacht cron configuration.
+ */
+export async function syncAircareDataForAllYachts(
+  triggeredBy: string | null,
+): Promise<AircareSyncSummary[]> {
+  const supabase = createAdminClient();
+  const { data: yachts, error } = await supabase.from("yachts").select("id");
+  if (error) throw new Error(error.message);
+
+  const summaries: AircareSyncSummary[] = [];
+  for (const yacht of yachts ?? []) {
+    summaries.push(await syncAircareData(yacht.id, triggeredBy));
+  }
+  return summaries;
 }

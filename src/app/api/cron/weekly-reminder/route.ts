@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { syncAircareDataForAllYachts } from "@/lib/aircare/sync";
+import { sendWeeklyDownloadReminders } from "@/lib/email/weekly-reminder";
 
 export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
@@ -8,11 +8,11 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const summaries = await syncAircareDataForAllYachts(null);
-    return NextResponse.json({ ok: true, summaries });
+    const result = await sendWeeklyDownloadReminders();
+    return NextResponse.json({ ok: true, ...result });
   } catch (err) {
     return NextResponse.json(
-      { ok: false, error: err instanceof Error ? err.message : "AirCare sync failed." },
+      { ok: false, error: err instanceof Error ? err.message : "Failed to send reminder emails." },
       { status: 500 },
     );
   }

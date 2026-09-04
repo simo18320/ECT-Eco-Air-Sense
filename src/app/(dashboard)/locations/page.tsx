@@ -4,6 +4,7 @@ import { getYachtContext } from "@/lib/data/current-yacht";
 import { getMonitoringPoints } from "@/lib/data/monitoring-points";
 import { getCurrentUser } from "@/lib/data/current-user";
 import { MonitoringPointsList } from "@/components/locations/monitoring-points-list";
+import { AddMonitoringPointDialog } from "@/components/locations/add-monitoring-point-dialog";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -32,20 +33,21 @@ export default async function LocationsPage() {
   }
 
   const points = await getMonitoringPoints(yacht.id);
+  const canEdit = user?.role === "admin" || user?.role === "technical";
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Locations</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Monitoring points for {yacht.name} — {points.length} point{points.length === 1 ? "" : "s"}.
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Locations</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Monitoring points for {yacht.name} — {points.length} point{points.length === 1 ? "" : "s"}.
+          </p>
+        </div>
+        {canEdit && <AddMonitoringPointDialog yachtId={yacht.id} />}
       </div>
 
-      <MonitoringPointsList
-        points={points}
-        canEdit={user?.role === "admin" || user?.role === "technical"}
-      />
+      <MonitoringPointsList points={points} canEdit={canEdit} />
     </div>
   );
 }
