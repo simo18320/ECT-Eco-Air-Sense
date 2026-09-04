@@ -36,7 +36,6 @@ export default async function LivePage() {
   }
 
   const canImport = user?.role === "admin" || user?.role === "technical";
-  const hasAircareSync = canImport && yacht.id === process.env.AIRCARE_YACHT_ID;
   const [points, readings, importJobs] = await Promise.all([
     getMonitoringPoints(yacht.id),
     getLatestReadingsByYacht(yacht.id),
@@ -53,7 +52,7 @@ export default async function LivePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          {hasAircareSync && <AircareSyncButton yachtId={yacht.id} />}
+          {canImport && <AircareSyncButton yachtId={yacht.id} />}
           {canImport && <ImportDialog yachtId={yacht.id} />}
         </div>
       </div>
