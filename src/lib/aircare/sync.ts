@@ -49,18 +49,36 @@ export async function syncAircareData(
     const token = await aircareLogin();
     const readings = await aircareGetLastData(token);
 
-    const { data: points } = await supabase
-      .from("monitoring_points")
-      .select("id, code")
-      .eq("yacht_id", yachtId);
+    const { data: yacht } = await supabase.from("yachts").select("company_id").eq("id", yachtId).single();
+
+    const [{ data: points }, { data: companyPoints }] = await Promise.all([
+      supabase.from("monitoring_points").select("id, code").eq("yacht_id", yachtId),
+      yacht
+        ? supabase
+            .from("monitoring_points")
+            .select("code, yachts!inner(company_id)")
+            .eq("yachts.company_id", yacht.company_id)
+            .not("code", "is", null)
+        : Promise.resolve({ data: [] as { code: string | null }[] }),
+    ]);
     const codeToPointId = new Map<string, string>();
     for (const p of points ?? []) {
       if (p.code) codeToPointId.set(p.code, p.id);
     }
+    // Devices claimed by ANY yacht on the account — used so that a sensor
+    // belonging to a different yacht isn't flagged as "unmatched" just
+    // because it doesn't appear in *this* yacht's monitoring points.
+    const claimedByAnyYacht = new Set(
+      (companyPoints ?? [])
+        .map((p) => p.code)
+        .filter((c): c is string => !!c)
+        .map((c) => c.replace(/ /g, "_")),
+    );
 
     const unmatchedDevices = new Set<string>();
     const rows: TablesInsert<"measurements">[] = [];
     let skipped = 0;
+    let dataQualityIssues = 0;
 
     for (const reading of readings) {
       const parameter = RESOURCE_TO_PARAMETER[reading.resource];
@@ -72,13 +90,17 @@ export async function syncAircareData(
       // AirCare sends the record anyway with value: null, nothing to store.
       if (typeof reading.value !== "number" || Number.isNaN(reading.value)) {
         skipped++;
+        dataQualityIssues++;
         continue;
       }
       const normalizedCode = reading.device.replace(/_/g, " ");
       const pointId = codeToPointId.get(normalizedCode);
       if (!pointId) {
-        unmatchedDevices.add(reading.device);
         skipped++;
+        if (!claimedByAnyYacht.has(reading.device)) {
+          unmatchedDevices.add(reading.device);
+          dataQualityIssues++;
+        }
         continue;
       }
       rows.push({
@@ -102,10 +124,21 @@ export async function syncAircareData(
       imported += count ?? batch.length;
     }
 
+    if (unmatchedDevices.size > 0) {
+      await supabase.from("import_errors").insert(
+        [...unmatchedDevices].map((device) => ({
+          import_job_id: job.id,
+          error_type: "unmatched_device",
+          message: `AirCare device "${device}" has no matching monitoring point on any yacht.`,
+          raw_data: { device },
+        })),
+      );
+    }
+
     await supabase
       .from("import_jobs")
       .update({
-        status: "completed",
+        status: dataQualityIssues > 0 ? "completed_with_errors" : "completed",
         records_imported: imported,
         records_rejected: skipped,
         parameters_detected: [...new Set(rows.map((r) => r.parameter))],

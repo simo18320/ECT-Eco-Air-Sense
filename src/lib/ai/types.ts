@@ -40,6 +40,8 @@ export type ParameterTrend = {
   trendChangePct: number | null;
   dayAvg: number | null;
   nightAvg: number | null;
+  /** p10-p90 range over the analysis period — "normal for this specific point," not a configured threshold. */
+  baselineRange: [number, number] | null;
   openAlertCount: number;
   openCriticalAlertCount: number;
 };

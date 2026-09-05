@@ -4,10 +4,13 @@ import { getYachtContext } from "@/lib/data/current-yacht";
 import { getMonitoringPoints, getLatestReadingsByYacht } from "@/lib/data/monitoring-points";
 import { getImportHistory } from "@/lib/data/imports";
 import { getCurrentUser } from "@/lib/data/current-user";
+import { getSensorHealth } from "@/lib/data/sensor-health";
+import { computeBaselinesForPoints } from "@/lib/baselines/compute";
 import { ImportDialog } from "@/components/import/import-dialog";
 import { AircareSyncButton } from "@/components/import/aircare-sync-button";
 import { ImportHistoryTable } from "@/components/import/import-history-table";
 import { LatestReadingsGrid } from "@/components/import/latest-readings-grid";
+import { SensorHealthCard } from "@/components/import/sensor-health-card";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 
@@ -36,11 +39,13 @@ export default async function LivePage() {
   }
 
   const canImport = user?.role === "admin" || user?.role === "technical";
-  const [points, readings, importJobs] = await Promise.all([
+  const [points, readings, importJobs, sensorHealth] = await Promise.all([
     getMonitoringPoints(yacht.id),
     getLatestReadingsByYacht(yacht.id),
     getImportHistory(yacht.id),
+    getSensorHealth(yacht.id),
   ]);
+  const baselines = await computeBaselinesForPoints(points.map((p) => p.id));
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -57,7 +62,9 @@ export default async function LivePage() {
         </div>
       </div>
 
-      <LatestReadingsGrid points={points} readings={readings} />
+      <LatestReadingsGrid points={points} readings={readings} baselines={baselines} />
+
+      <SensorHealthCard points={sensorHealth} />
 
       <Card>
         <CardHeader>

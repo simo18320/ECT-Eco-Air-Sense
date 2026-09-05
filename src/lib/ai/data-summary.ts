@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { parameterMeta } from "@/lib/parameters";
+import { rangeFromValues } from "@/lib/baselines/compute";
 import { getYachtScores } from "@/lib/data/scoring";
 import type {
   YachtDataSummary,
@@ -116,6 +117,7 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
         trendChangePct: changePct,
         dayAvg,
         nightAvg,
+        baselineRange: rangeFromValues(values),
         openAlertCount: pointAlerts.length,
         openCriticalAlertCount: pointAlerts.filter((a) => a.severity === "critical").length,
       });

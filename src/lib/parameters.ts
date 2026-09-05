@@ -63,7 +63,7 @@ export type Stats = {
   count: number;
 };
 
-function percentile(sorted: number[], p: number): number {
+export function percentile(sorted: number[], p: number): number {
   if (sorted.length === 1) return sorted[0];
   const idx = (p / 100) * (sorted.length - 1);
   const lo = Math.floor(idx);

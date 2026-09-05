@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LatestReading } from "@/lib/data/monitoring-points";
+import type { PointBaseline } from "@/lib/baselines/compute";
 import type { Tables } from "@/types/database";
 
 const PARAM_ORDER = ["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10"];
@@ -21,9 +22,11 @@ function formatValue(parameter: string, value: number) {
 export function LatestReadingsGrid({
   points,
   readings,
+  baselines,
 }: {
   points: Tables<"monitoring_points">[];
   readings: LatestReading[];
+  baselines?: Map<string, PointBaseline>;
 }) {
   if (points.length === 0) {
     return (
@@ -72,19 +75,31 @@ export function LatestReadingsGrid({
               ) : (
                 <>
                   <div className="grid grid-cols-3 gap-2">
-                    {sorted.map((r) => (
-                      <div key={r.parameter} className="text-center">
-                        <div className="text-xs text-muted-foreground">
-                          {PARAM_LABELS[r.parameter] ?? r.parameter}
+                    {sorted.map((r) => {
+                      const baseline = baselines?.get(`${point.id}:${r.parameter}`);
+                      const range = baseline?.overallRange ?? null;
+                      const outsideBaseline = range != null && (r.value < range[0] || r.value > range[1]);
+                      return (
+                        <div key={r.parameter} className="text-center">
+                          <div className="text-xs text-muted-foreground">
+                            {PARAM_LABELS[r.parameter] ?? r.parameter}
+                          </div>
+                          <div
+                            className={`text-sm font-semibold tabular-nums ${outsideBaseline ? "text-status-warning" : ""}`}
+                          >
+                            {formatValue(r.parameter, r.value)}
+                            <span className="text-xs font-normal text-muted-foreground ml-0.5">
+                              {r.unit}
+                            </span>
+                          </div>
+                          {range && (
+                            <div className="text-[10px] text-muted-foreground">
+                              Normal {formatValue(r.parameter, range[0])}–{formatValue(r.parameter, range[1])}
+                            </div>
+                          )}
                         </div>
-                        <div className="text-sm font-semibold tabular-nums">
-                          {formatValue(r.parameter, r.value)}
-                          <span className="text-xs font-normal text-muted-foreground ml-0.5">
-                            {r.unit}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   {mostRecent && (
                     <p className="text-xs text-muted-foreground mt-3 pt-2 border-t border-border">

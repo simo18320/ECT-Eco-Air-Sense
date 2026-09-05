@@ -3,12 +3,16 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser } from "@/lib/data/current-user";
 import { getYachtContext } from "@/lib/data/current-yacht";
 import { getUserYachtAccessMap } from "@/lib/data/user-yacht-access";
+import { getEffectiveThresholds } from "@/lib/data/thresholds";
+import { parameterMeta } from "@/lib/parameters";
 import { BrandingForm } from "@/components/settings/branding-form";
 import { UserRoleTable } from "@/components/settings/user-role-table";
 import { CreateUserDialog } from "@/components/settings/create-user-dialog";
 import { ScoringWeightsForm } from "@/components/settings/scoring-weights-form";
+import { ThresholdOverrideDialog } from "@/components/settings/threshold-override-dialog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
   Table,
   TableBody,
@@ -24,7 +28,7 @@ export default async function SettingsPage() {
   if (!user) redirect("/login");
 
   const supabase = await createClient();
-  const [{ data: users }, { data: scoringConfigs }, { data: thresholds }, { allYachts }, yachtAccessByUser] =
+  const [{ data: users }, { data: scoringConfigs }, { yacht, allYachts }, yachtAccessByUser] =
     await Promise.all([
       supabase.from("app_users").select("*").order("created_at", { ascending: true }),
       supabase
@@ -32,10 +36,12 @@ export default async function SettingsPage() {
         .select("config_type, weights")
         .eq("company_id", user.companyId)
         .is("yacht_id", null),
-      supabase.from("thresholds").select("*").eq("company_id", user.companyId).is("yacht_id", null).order("parameter"),
       getYachtContext(),
       getUserYachtAccessMap(),
     ]);
+
+  const thresholds = yacht ? await getEffectiveThresholds(yacht.id) : [];
+  const canEditThresholds = user.role === "admin" || user.role === "technical";
 
   const weightsByType = new Map<Enums<"scoring_config_type">, Record<string, number>>();
   for (const c of scoringConfigs ?? []) weightsByType.set(c.config_type, c.weights as Record<string, number>);
@@ -162,44 +168,66 @@ export default async function SettingsPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Thresholds</CardTitle>
+          <CardTitle>Thresholds{yacht ? ` — ${yacht.name}` : ""}</CardTitle>
           <CardDescription>
             Preferred range, warning/critical bounds and alert persistence per parameter. Sourced
-            from ASHRAE, WELL Building Standard and EPA/WHO air quality guidance — adjust for your
-            vessel and jurisdiction.
+            from ASHRAE, WELL Building Standard and EPA/WHO air quality guidance by default — override
+            per yacht when a vessel or jurisdiction needs different bounds. Switch yachts from the
+            sidebar to edit another vessel&apos;s overrides.
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Parameter</TableHead>
-                <TableHead>Preferred</TableHead>
-                <TableHead>Warning</TableHead>
-                <TableHead>Critical</TableHead>
-                <TableHead>Persistence</TableHead>
-                <TableHead>Source</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(thresholds ?? []).map((t) => (
-                <TableRow key={t.id}>
-                  <TableCell className="font-medium capitalize">{t.parameter.replace(/_/g, " ")}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {t.preferred_min ?? "—"} – {t.preferred_max ?? "—"}
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{t.warning_threshold ?? "—"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{t.critical_threshold ?? "—"}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">{t.persistence_minutes} min</TableCell>
-                  <TableCell className="text-xs text-muted-foreground max-w-48">{t.source_reference}</TableCell>
+          {!yacht ? (
+            <Alert>
+              <AlertDescription>Create a yacht profile to configure thresholds.</AlertDescription>
+            </Alert>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Parameter</TableHead>
+                  <TableHead>Preferred</TableHead>
+                  <TableHead>Warning</TableHead>
+                  <TableHead>Critical</TableHead>
+                  <TableHead>Persistence</TableHead>
+                  <TableHead>Scope</TableHead>
+                  {canEditThresholds && <TableHead className="w-10" />}
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-          <p className="text-xs text-muted-foreground mt-3">
-            Editable threshold values arrive alongside per-yacht overrides in a follow-up pass —
-            for now, ask if you need a specific value changed.
-          </p>
+              </TableHeader>
+              <TableBody>
+                {thresholds.map((t) => {
+                  const isOverride = t.yacht_id === yacht.id;
+                  return (
+                    <TableRow key={t.parameter}>
+                      <TableCell className="font-medium">{parameterMeta(t.parameter).label}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {t.preferred_min ?? "—"} – {t.preferred_max ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{t.warning_threshold ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{t.critical_threshold ?? "—"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{t.persistence_minutes} min</TableCell>
+                      <TableCell>
+                        <Badge variant={isOverride ? "default" : "secondary"}>
+                          {isOverride ? "Yacht override" : "Company default"}
+                        </Badge>
+                      </TableCell>
+                      {canEditThresholds && (
+                        <TableCell>
+                          <ThresholdOverrideDialog
+                            yachtId={yacht.id}
+                            parameter={t.parameter}
+                            label={parameterMeta(t.parameter).label}
+                            threshold={t}
+                            isOverride={isOverride}
+                          />
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          )}
         </CardContent>
       </Card>
     </div>

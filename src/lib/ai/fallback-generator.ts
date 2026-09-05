@@ -117,6 +117,34 @@ export function generateFallbackInsights(summary: YachtDataSummary): InsightsOut
     });
   }
 
+  // 5) Values this period outside this point's own typical (p10-p90) range —
+  // "unusual for here," independent of the configured alert thresholds.
+  const baselineCandidates = summary.points
+    .flatMap((p) => p.parameters.map((param) => ({ point: p, param })))
+    .filter(({ point, param }) => param.baselineRange != null && !alertsByPointParam.has(`${point.pointName}:${param.parameter}`))
+    .filter(({ param }) => param.max > param.baselineRange![1] || param.min < param.baselineRange![0])
+    .sort((a, b) => {
+      const dev = (p: (typeof a)["param"]) =>
+        Math.max(p.max - p.baselineRange![1], p.baselineRange![0] - p.min);
+      return dev(b.param) - dev(a.param);
+    });
+
+  for (const { point, param } of baselineCandidates.slice(0, 1)) {
+    const meta = parameterMeta(param.parameter);
+    const [lo, hi] = param.baselineRange!;
+    const above = param.max > hi;
+    findings.push({
+      insightType: "anomaly",
+      monitoringPointName: point.pointName,
+      parameter: param.parameter,
+      fact: `${meta.label} in ${point.pointName} reached ${above ? param.max : param.min} ${meta.unit} this period, outside the typical ${lo}–${hi} ${meta.unit} range for this specific location.`,
+      interpretation: `This is unusual for ${point.pointName} specifically, based on its own recent history — not necessarily a breach of the configured safety threshold.`,
+      recommendation: `Check what was different in ${point.pointName} during this period (occupancy, ventilation, activity).`,
+      confidenceLevel: "low",
+      priority: "low",
+    });
+  }
+
   const topPriorityFinding = findings.find((f) => f.priority === "high") ?? findings[0];
   const overallStatus =
     summary.overallScore != null
