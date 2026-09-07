@@ -76,9 +76,15 @@ export async function syncAircareData(
     );
 
     const unmatchedDevices = new Set<string>();
-    const rows: TablesInsert<"measurements">[] = [];
+    // Keyed by the exact upsert conflict target (monitoring_point_id, parameter,
+    // timestamp) — a single Postgres upsert statement errors ("ON CONFLICT DO
+    // UPDATE command cannot affect row a second time") if the same key appears
+    // twice in one batch, which AirCare's feed can do (e.g. a device briefly
+    // listed under two groups reports the same reading twice).
+    const rowsByKey = new Map<string, TablesInsert<"measurements">>();
     let skipped = 0;
     let dataQualityIssues = 0;
+    let duplicateReadings = 0;
 
     for (const reading of readings) {
       const parameter = RESOURCE_TO_PARAMETER[reading.resource];
@@ -103,16 +109,23 @@ export async function syncAircareData(
         }
         continue;
       }
-      rows.push({
+      const timestamp = new Date(reading.checktime * 1000).toISOString();
+      const key = `${pointId}:${parameter}:${timestamp}`;
+      if (rowsByKey.has(key)) {
+        duplicateReadings++;
+        continue;
+      }
+      rowsByKey.set(key, {
         monitoring_point_id: pointId,
         parameter,
         value: reading.value,
         unit: reading.um || null,
-        timestamp: new Date(reading.checktime * 1000).toISOString(),
+        timestamp,
         import_job_id: job.id,
       });
     }
 
+    const rows = [...rowsByKey.values()];
     const BATCH_SIZE = 500;
     let imported = 0;
     for (let i = 0; i < rows.length; i += BATCH_SIZE) {
@@ -138,9 +151,9 @@ export async function syncAircareData(
     await supabase
       .from("import_jobs")
       .update({
-        status: dataQualityIssues > 0 ? "completed_with_errors" : "completed",
+        status: dataQualityIssues > 0 || duplicateReadings > 0 ? "completed_with_errors" : "completed",
         records_imported: imported,
-        records_rejected: skipped,
+        records_rejected: skipped + duplicateReadings,
         parameters_detected: [...new Set(rows.map((r) => r.parameter))],
         monitoring_points_detected: codeToPointId.size,
       })
@@ -153,7 +166,7 @@ export async function syncAircareData(
       yachtId,
       recordsFetched: readings.length,
       recordsImported: imported,
-      recordsSkipped: skipped,
+      recordsSkipped: skipped + duplicateReadings,
       unmatchedDevices: [...unmatchedDevices],
     };
   } catch (err) {
