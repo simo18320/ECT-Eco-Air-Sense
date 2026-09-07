@@ -13,11 +13,19 @@ export default async function YachtProfilePage() {
     .select("*")
     .order("created_at", { ascending: false });
 
+  const photoUrls: Record<string, string> = {};
+  for (const yacht of yachts ?? []) {
+    if (!yacht.photo_url) continue;
+    const { data } = await supabase.storage.from("yacht-files").createSignedUrl(yacht.photo_url, 60 * 60);
+    if (data?.signedUrl) photoUrls[yacht.id] = data.signedUrl;
+  }
+
   return (
     <div className="p-6 max-w-6xl mx-auto">
       <YachtList
         yachts={yachts ?? []}
         canEdit={user.role === "admin" || user.role === "technical"}
+        photoUrls={photoUrls}
       />
     </div>
   );

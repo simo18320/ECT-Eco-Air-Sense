@@ -6,6 +6,7 @@ import { getScoringWeights } from "@/lib/data/scoring-config";
 import { getYachtHealthSummary } from "@/lib/data/alerts";
 import { getDecks, getGaPlanForDeck, getPinsForGaPlan } from "@/lib/data/ga-plan";
 import { getLatestExecutiveBriefing, getRecentInsights } from "@/lib/data/ai-insights";
+import { buildEconomicImpact } from "./economic-impact";
 import type { ReportSnapshot, ReportGaPlanDeck, ReportPointScore } from "./types";
 
 async function urlToDataUrl(url: string): Promise<string | null> {
@@ -68,6 +69,13 @@ export async function buildReportSnapshot(yachtId: string, periodDays = 14): Pro
   );
 
   const mouldRiskByPoint = new Map(pointScores.map((p) => [p.pointName, p.mouldRisk]));
+  const economicImpact = buildEconomicImpact(dataSummary, pointScores);
+
+  let photoDataUrl: string | null = null;
+  if (yacht.photo_url) {
+    const { data: signed } = await supabase.storage.from("yacht-files").createSignedUrl(yacht.photo_url, 60 * 60);
+    if (signed?.signedUrl) photoDataUrl = await urlToDataUrl(signed.signedUrl);
+  }
 
   const gaPlan: ReportGaPlanDeck[] = [];
   for (const deck of decks) {
@@ -123,6 +131,7 @@ export async function buildReportSnapshot(yachtId: string, periodDays = 14): Pro
       captainName: yacht.captain_name,
       monitoringProvider: yacht.monitoring_provider,
       monitoringFrequency: yacht.monitoring_frequency,
+      photoDataUrl,
     },
     coverage: {
       totalPoints: health.sensorsOnline + health.sensorsOffline,
@@ -140,6 +149,7 @@ export async function buildReportSnapshot(yachtId: string, periodDays = 14): Pro
     },
     dataSummary,
     pointScores,
+    economicImpact,
     gaPlan,
     aiInsights: briefing
       ? {

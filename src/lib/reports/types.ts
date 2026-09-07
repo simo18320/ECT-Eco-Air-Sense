@@ -1,4 +1,5 @@
 import type { YachtDataSummary } from "@/lib/ai/types";
+import type { EconomicImpactItem } from "./economic-impact";
 
 export type ReportPointScore = {
   pointId: string;
@@ -48,6 +49,7 @@ export type ReportSnapshot = {
     captainName: string | null;
     monitoringProvider: string | null;
     monitoringFrequency: string | null;
+    photoDataUrl: string | null;
   };
   coverage: {
     totalPoints: number;
@@ -65,6 +67,7 @@ export type ReportSnapshot = {
   };
   dataSummary: YachtDataSummary;
   pointScores: ReportPointScore[];
+  economicImpact: EconomicImpactItem[];
   gaPlan: ReportGaPlanDeck[];
   aiInsights: {
     overallStatus: string;

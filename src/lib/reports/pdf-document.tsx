@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import {
   Document,
   Page,
@@ -8,9 +10,41 @@ import {
   Rect,
   Circle,
   G,
+  Font,
   StyleSheet,
 } from "@react-pdf/renderer";
+import type { Style } from "@react-pdf/types";
 import type { ReportSnapshot } from "./types";
+import type { EconomicImpactRiskLevel } from "./economic-impact";
+
+const FONT_DIR = path.join(process.cwd(), "src/lib/reports/fonts");
+const FONT_HEADING = "Playfair Display";
+const FONT_BODY = "Public Sans";
+
+// Local TTF files (fetched once from Google Fonts) rather than a live font
+// CDN URL, mirroring the local-file pattern already used for the AirCare TLS
+// intermediate cert in src/lib/aircare/client.ts — no network dependency at
+// render time in a serverless function.
+Font.register({
+  family: FONT_HEADING,
+  fonts: [{ src: path.join(FONT_DIR, "PlayfairDisplay-Bold.ttf"), fontWeight: 700 }],
+});
+Font.register({
+  family: FONT_BODY,
+  fonts: [
+    { src: path.join(FONT_DIR, "PublicSans-Regular.ttf"), fontWeight: 400 },
+    { src: path.join(FONT_DIR, "PublicSans-Bold.ttf"), fontWeight: 700 },
+  ],
+});
+
+// The Eco Air Sense product wordmark (same file as public/logo.png, used on
+// the login page) — kept as its own copy under src/lib/reports so it's
+// bundled into the serverless function output the same way the fonts and
+// the AirCare TLS cert are (files under public/ aren't guaranteed to be
+// readable via fs at Vercel Function runtime).
+const ECO_AIR_SENSE_LOGO_DATA_URL = `data:image/png;base64,${fs
+  .readFileSync(path.join(process.cwd(), "src/lib/reports/assets/eco-air-sense-logo.png"))
+  .toString("base64")}`;
 
 const COLORS = {
   navy: "#1e2a4a",
@@ -25,17 +59,19 @@ const COLORS = {
 };
 
 const styles = StyleSheet.create({
-  page: { padding: 40, fontSize: 10, fontFamily: "Helvetica", color: COLORS.text },
+  page: { padding: 40, fontSize: 10, fontFamily: FONT_BODY, color: COLORS.text },
   coverPage: { padding: 0 },
-  h1: { fontSize: 20, fontFamily: "Helvetica-Bold", color: COLORS.navy, marginBottom: 4 },
-  h2: { fontSize: 14, fontFamily: "Helvetica-Bold", color: COLORS.navy, marginTop: 18, marginBottom: 8 },
-  h3: { fontSize: 11, fontFamily: "Helvetica-Bold", color: COLORS.navy, marginTop: 10, marginBottom: 4 },
+  h1: { fontSize: 19, fontFamily: FONT_HEADING, fontWeight: 700, color: COLORS.navy, marginBottom: 6 },
+  h2: { fontSize: 14, fontFamily: FONT_HEADING, fontWeight: 700, color: COLORS.navy, marginTop: 18, marginBottom: 8 },
+  h3: { fontSize: 11, fontFamily: FONT_HEADING, fontWeight: 700, color: COLORS.navy, marginTop: 10, marginBottom: 4 },
+  sectionNum: { color: COLORS.brass },
+  bold: { fontFamily: FONT_BODY, fontWeight: 700 },
   muted: { color: COLORS.muted, fontSize: 9 },
-  section: { marginBottom: 6 },
+  section: { marginBottom: 8 },
   row: { flexDirection: "row" },
   labelCol: { width: "40%", color: COLORS.muted },
   valueCol: { width: "60%" },
-  divider: { borderBottomWidth: 1, borderBottomColor: COLORS.border, marginVertical: 8 },
+  divider: { borderBottomWidth: 1, borderBottomColor: COLORS.border, marginVertical: 10 },
   footer: {
     position: "absolute",
     bottom: 20,
@@ -51,19 +87,20 @@ const styles = StyleSheet.create({
   },
   scoreCard: {
     width: "18%",
-    padding: 8,
+    padding: 10,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: 4,
     marginRight: "2%",
   },
-  scoreValue: { fontSize: 18, fontFamily: "Helvetica-Bold" },
-  scoreLabel: { fontSize: 7, color: COLORS.muted, marginBottom: 4 },
-  table: { borderWidth: 1, borderColor: COLORS.border, marginTop: 4 },
+  scoreValue: { fontSize: 19, fontFamily: FONT_BODY, fontWeight: 700 },
+  scoreLabel: { fontSize: 7, color: COLORS.muted, marginBottom: 5 },
+  table: { borderWidth: 1, borderColor: COLORS.border, marginTop: 6 },
   tr: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  trHeader: { flexDirection: "row", backgroundColor: COLORS.bg, borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  td: { padding: 5, fontSize: 8.5, flex: 1 },
-  thText: { padding: 5, fontSize: 8, fontFamily: "Helvetica-Bold", flex: 1, color: COLORS.navy },
+  trAlt: { backgroundColor: COLORS.bg },
+  trHeader: { flexDirection: "row", backgroundColor: COLORS.navy },
+  td: { padding: 6, fontSize: 8.5, flex: 1 },
+  thText: { padding: 6, fontSize: 8, fontFamily: FONT_BODY, fontWeight: 700, flex: 1, color: "#ffffff" },
   badge: { fontSize: 7.5, paddingVertical: 2, paddingHorizontal: 6, borderRadius: 8, alignSelf: "flex-start" },
 });
 
@@ -75,12 +112,28 @@ function bandColor(score: number | null, invert = false): string {
   return COLORS.critical;
 }
 
+function riskColor(level: EconomicImpactRiskLevel): string {
+  if (level === "high") return COLORS.critical;
+  if (level === "medium") return COLORS.warning;
+  return COLORS.good;
+}
+
 function fmt(v: number | null | undefined, decimals = 1): string {
   return v == null ? "—" : v.toFixed(decimals);
 }
 
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/** Section heading with an auto-incrementing, brass-coloured number prefix. */
+function SectionHeading({ n, children, style = styles.h1 }: { n: number; children: string; style?: Style }) {
+  return (
+    <Text style={style}>
+      <Text style={styles.sectionNum}>{n}. </Text>
+      {children}
+    </Text>
+  );
 }
 
 function ScoreCard({ label, score, invert = false }: { label: string; score: number | null; invert?: boolean }) {
@@ -101,7 +154,7 @@ function BarChart({
 }) {
   const width = 500;
   const barHeight = 14;
-  const gap = 6;
+  const gap = 7;
   const labelWidth = 140;
   const chartWidth = width - labelWidth - 50;
   const maxVal = Math.max(...data.map((d) => d.value), 1);
@@ -115,7 +168,7 @@ function BarChart({
         return (
           <G key={d.label}>
             <Rect x={labelWidth} y={y} width={chartWidth} height={barHeight} fill={COLORS.bg} />
-            <Rect x={labelWidth} y={y} width={Math.max(barW, 2)} height={barHeight} fill={COLORS.navy} />
+            <Rect x={labelWidth} y={y} width={Math.max(barW, 2)} height={barHeight} fill={COLORS.brass} />
           </G>
         );
       })}
@@ -172,8 +225,32 @@ const PARAM_LABELS: Record<string, string> = {
   pm10: "PM10",
 };
 
+const RISK_LABEL: Record<EconomicImpactRiskLevel, string> = {
+  high: "HIGH",
+  medium: "MEDIUM",
+  low: "LOW",
+};
+
 export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
-  const { meta, yacht, coverage, scores, dataSummary, pointScores, gaPlan, aiInsights, dataQualityDetail } = snapshot;
+  const {
+    meta,
+    yacht,
+    coverage,
+    scores,
+    dataSummary,
+    pointScores,
+    economicImpact,
+    gaPlan,
+    aiInsights,
+    dataQualityDetail,
+  } = snapshot;
+
+  // Sections are numbered in source order via this counter — JS evaluates
+  // JSX children top-to-bottom as the tree is built, so this stays correct
+  // through the conditional GA Plan page and the parameter loop without ever
+  // needing manual renumbering when a section is added or removed.
+  let sectionCount = 0;
+  const n = () => ++sectionCount;
 
   return (
     <Document title={`${yacht.name} Environmental Monitoring Report`}>
@@ -181,15 +258,31 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
       <Page size="A4" style={styles.coverPage}>
         <View style={{ flex: 1, backgroundColor: COLORS.navy, padding: 50, justifyContent: "space-between" }}>
           <View>
-            {meta.companyLogoDataUrl && <Image src={meta.companyLogoDataUrl} style={{ width: 90, marginBottom: 30 }} />}
-            <Text style={{ color: "#f0ad4e", fontSize: 9, letterSpacing: 2, marginBottom: 10 }}>
-              {meta.companyName.toUpperCase()}
-            </Text>
-            <Text style={{ color: "white", fontSize: 26, fontFamily: "Helvetica-Bold", marginBottom: 6 }}>
-              Eco Air Sense Monitoring Report
+            <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              {meta.companyLogoDataUrl ? (
+                <View style={{ backgroundColor: "white", borderRadius: 4, padding: 8 }}>
+                  <Image src={meta.companyLogoDataUrl} style={{ width: 170 }} />
+                </View>
+              ) : (
+                <View />
+              )}
+              <View style={{ backgroundColor: "white", borderRadius: 4, padding: 8 }}>
+                <Image src={ECO_AIR_SENSE_LOGO_DATA_URL} style={{ width: 100 }} />
+              </View>
+            </View>
+            <Text style={{ color: "white", fontSize: 22, fontFamily: FONT_HEADING, fontWeight: 700, marginTop: 4, marginBottom: 6 }}>
+              Environmental Monitoring Report
             </Text>
             <Text style={{ color: "#c9d2e8", fontSize: 14 }}>{yacht.name}</Text>
           </View>
+
+          {yacht.photoDataUrl && (
+            <Image
+              src={yacht.photoDataUrl}
+              style={{ width: "100%", height: 220, objectFit: "cover", borderRadius: 4 }}
+            />
+          )}
+
           <View>
             <Text style={{ color: "#c9d2e8", fontSize: 10, marginBottom: 4 }}>
               Reporting Period: {fmtDate(meta.periodStart)} – {fmtDate(meta.periodEnd)}
@@ -210,7 +303,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
       <Page size="A4" style={styles.page}>
         <Footer yachtName={yacht.name} />
 
-        <Text style={styles.h1}>1. Executive Summary</Text>
+        <SectionHeading n={n()}>Executive Summary</SectionHeading>
         {aiInsights ? (
           <View style={styles.section}>
             <KeyValueRow label="Overall Status" value={aiInsights.overallStatus} />
@@ -224,12 +317,12 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
         )}
 
         <View style={styles.divider} />
-        <Text style={styles.h1}>2. Monitoring Period</Text>
+        <SectionHeading n={n()}>Monitoring Period</SectionHeading>
         <KeyValueRow label="Start" value={fmtDate(meta.periodStart)} />
         <KeyValueRow label="End" value={fmtDate(meta.periodEnd)} />
 
         <View style={styles.divider} />
-        <Text style={styles.h1}>3. Yacht Information</Text>
+        <SectionHeading n={n()}>Yacht Information</SectionHeading>
         <KeyValueRow label="Yacht Name" value={yacht.name} />
         <KeyValueRow label="Shipyard" value={yacht.shipyard ?? ""} />
         <KeyValueRow label="Type" value={yacht.yachtType ?? ""} />
@@ -245,7 +338,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
         <KeyValueRow label="Monitoring Frequency" value={yacht.monitoringFrequency ?? ""} />
 
         <View style={styles.divider} />
-        <Text style={styles.h1}>4. Monitoring Coverage</Text>
+        <SectionHeading n={n()}>Monitoring Coverage</SectionHeading>
         <KeyValueRow label="Monitoring Points" value={String(coverage.totalPoints)} />
         <KeyValueRow label="Sensors Online" value={String(coverage.sensorsOnline)} />
         <KeyValueRow label="Sensors Offline" value={String(coverage.sensorsOffline)} />
@@ -256,7 +349,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
         <KeyValueRow label="Data Quality" value={coverage.dataQualityPct != null ? `${coverage.dataQualityPct}%` : "—"} />
 
         <View style={styles.divider} />
-        <Text style={styles.h1}>5. Environmental Overview</Text>
+        <SectionHeading n={n()}>Environmental Overview</SectionHeading>
         <View style={{ flexDirection: "row", marginTop: 4 }}>
           <ScoreCard label="OVERALL SCORE" score={scores.overall} />
           <ScoreCard label="COMFORT INDEX" score={scores.comfort} />
@@ -269,7 +362,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
       {/* Parameter analysis */}
       <Page size="A4" style={styles.page}>
         <Footer yachtName={yacht.name} />
-        {(["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10"] as const).map((parameter, idx) => {
+        {(["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10"] as const).map((parameter) => {
           const rows = dataSummary.points
             .map((p) => ({ point: p, param: p.parameters.find((pp) => pp.parameter === parameter) }))
             .filter((r) => r.param);
@@ -277,9 +370,9 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
           const unit = rows[0].param!.unit;
           return (
             <View key={parameter} wrap={false} style={{ marginBottom: 16 }}>
-              <Text style={styles.h2}>
-                {idx + 6}. {PARAM_LABELS[parameter]} Analysis
-              </Text>
+              <SectionHeading n={n()} style={styles.h2}>
+                {`${PARAM_LABELS[parameter]} Analysis`}
+              </SectionHeading>
               <BarChart data={rows.map((r) => ({ label: r.point.pointName, value: r.param!.avg }))} unit={unit} />
               <View style={styles.table}>
                 <View style={styles.trHeader}>
@@ -289,8 +382,8 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
                   <Text style={styles.thText}>Max</Text>
                   <Text style={styles.thText}>Trend</Text>
                 </View>
-                {rows.map((r) => (
-                  <View key={r.point.pointId} style={styles.tr}>
+                {rows.map((r, i) => (
+                  <View key={r.point.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
                     <Text style={styles.td}>{r.point.pointName}</Text>
                     <Text style={styles.td}>{fmt(r.param!.avg)}</Text>
                     <Text style={styles.td}>{fmt(r.param!.min)}</Text>
@@ -310,29 +403,29 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
       {/* Scoring indices detail */}
       <Page size="A4" style={styles.page}>
         <Footer yachtName={yacht.name} />
-        <Text style={styles.h1}>11. Comfort Index — By Monitoring Point</Text>
+        <SectionHeading n={n()}>Comfort Index — By Monitoring Point</SectionHeading>
         <ScoreTable rows={pointScores} field="comfort" />
 
-        <Text style={styles.h1}>12. Mould Risk Index — By Monitoring Point</Text>
+        <SectionHeading n={n()}>Mould Risk Index — By Monitoring Point</SectionHeading>
         <Text style={styles.muted}>
           Moisture-driven risk indicator. Higher = more risk. Not a mould detection or laboratory test.
         </Text>
         <ScoreTable rows={pointScores} field="mouldRisk" invert />
 
-        <Text style={styles.h1}>13. Biological Safety Indicator — By Monitoring Point</Text>
+        <SectionHeading n={n()}>Biological Safety Indicator — By Monitoring Point</SectionHeading>
         <Text style={styles.muted}>
           Environmental favourability indicator. Does not confirm presence or absence of any organism.
         </Text>
         <ScoreTable rows={pointScores} field="biologicalSafety" />
 
-        <Text style={styles.h1}>14. Luxury Perception Index — By Monitoring Point</Text>
+        <SectionHeading n={n()}>Luxury Perception Index — By Monitoring Point</SectionHeading>
         <ScoreTable rows={pointScores} field="luxuryPerception" />
       </Page>
 
       {/* Alerts & Anomalies */}
       <Page size="A4" style={styles.page}>
         <Footer yachtName={yacht.name} />
-        <Text style={styles.h1}>15. Alerts & Anomalies</Text>
+        <SectionHeading n={n()}>Alerts & Anomalies</SectionHeading>
         {dataSummary.openAlerts.length === 0 ? (
           <Text style={styles.muted}>No sustained alerts open during this reporting period.</Text>
         ) : (
@@ -345,7 +438,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
               <Text style={styles.thText}>Duration</Text>
             </View>
             {dataSummary.openAlerts.map((a, i) => (
-              <View key={i} style={styles.tr}>
+              <View key={i} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
                 <Text style={styles.td}>{a.pointName}</Text>
                 <Text style={styles.td}>{PARAM_LABELS[a.parameter] ?? a.parameter}</Text>
                 <Text style={[styles.td, { color: a.severity === "critical" ? COLORS.critical : COLORS.warning }]}>
@@ -358,7 +451,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
           </View>
         )}
 
-        <Text style={styles.h1}>16. Monitoring Point Analysis</Text>
+        <SectionHeading n={n()}>Monitoring Point Analysis</SectionHeading>
         <View style={styles.table}>
           <View style={styles.trHeader}>
             <Text style={styles.thText}>Point</Text>
@@ -368,8 +461,8 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
             <Text style={styles.thText}>Mould Risk</Text>
             <Text style={styles.thText}>Luxury</Text>
           </View>
-          {pointScores.map((p) => (
-            <View key={p.pointId} style={styles.tr}>
+          {pointScores.map((p, i) => (
+            <View key={p.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
               <Text style={styles.td}>{p.pointName}</Text>
               <Text style={styles.td}>{p.overall ?? "—"}</Text>
               <Text style={styles.td}>{p.comfort ?? "—"}</Text>
@@ -385,7 +478,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
       {gaPlan.length > 0 && (
         <Page size="A4" style={styles.page}>
           <Footer yachtName={yacht.name} />
-          <Text style={styles.h1}>17. GA Plan Risk Map</Text>
+          <SectionHeading n={n()}>GA Plan Risk Map</SectionHeading>
           <Text style={styles.muted}>
             Mould Risk Index by pin position. Colours are an analytical overlay at discrete monitoring points, not
             interpolated continuous measurement.
@@ -417,41 +510,46 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
         </Page>
       )}
 
-      {/* AI Interpretation & Recommendations */}
+      {/* Final Analysis — consolidated results, interpretation, recommendations and economic impact */}
       <Page size="A4" style={styles.page}>
         <Footer yachtName={yacht.name} />
-        <Text style={styles.h1}>18. AI Interpretation</Text>
-        {aiInsights ? (
+        <SectionHeading n={n()}>Final Analysis — Sampling Period</SectionHeading>
+
+        <Text style={styles.h3}>Summary</Text>
+        <Text style={{ marginBottom: 4 }}>
+          {aiInsights?.overallStatus ?? `Overall Environmental Score for the period: ${scores.overall ?? "—"}/100.`}
+        </Text>
+        {aiInsights?.keyFinding && <Text style={{ marginBottom: 4 }}>{aiInsights.keyFinding}</Text>}
+        {aiInsights?.mainRisk && <Text style={{ color: COLORS.muted }}>{aiInsights.mainRisk}</Text>}
+
+        <Text style={styles.h3}>Results & Interpretation</Text>
+        {aiInsights && aiInsights.findings.length > 0 ? (
           <>
             <Text style={styles.muted}>
               Engine: {aiInsights.engine === "claude" ? "Claude AI" : "Rule-based summary (no AI model configured)"}
             </Text>
             {aiInsights.findings.map((f, i) => (
               <View key={i} wrap={false} style={{ marginTop: 10, paddingBottom: 8, borderBottomWidth: 1, borderBottomColor: COLORS.border }}>
-                <Text style={{ fontSize: 9, fontFamily: "Helvetica-Bold" }}>
+                <Text style={[styles.bold, { fontSize: 9 }]}>
                   {f.pointName ? `${f.pointName} — ` : ""}
                   {f.insightType.toUpperCase()} ({f.confidenceLevel} confidence, {f.priority} priority)
                 </Text>
                 <Text style={{ marginTop: 3 }}>
-                  <Text style={{ fontFamily: "Helvetica-Bold" }}>Fact: </Text>
+                  <Text style={styles.bold}>Result: </Text>
                   {f.fact}
                 </Text>
                 <Text style={{ marginTop: 2, color: COLORS.muted }}>
-                  <Text style={{ fontFamily: "Helvetica-Bold" }}>Interpretation: </Text>
+                  <Text style={styles.bold}>Interpretation: </Text>
                   {f.interpretation}
-                </Text>
-                <Text style={{ marginTop: 2, color: COLORS.muted }}>
-                  <Text style={{ fontFamily: "Helvetica-Bold" }}>Recommendation: </Text>
-                  {f.recommendation}
                 </Text>
               </View>
             ))}
           </>
         ) : (
-          <Text style={styles.muted}>No AI insights generated for this period.</Text>
+          <Text style={styles.muted}>No specific findings this period.</Text>
         )}
 
-        <Text style={styles.h1}>19. Recommended Actions</Text>
+        <Text style={styles.h3}>Recommendations</Text>
         {aiInsights && aiInsights.findings.length > 0 ? (
           aiInsights.findings.map((f, i) => (
             <Text key={i} style={{ marginBottom: 4 }}>
@@ -461,12 +559,46 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
         ) : (
           <Text style={styles.muted}>No specific actions recommended this period.</Text>
         )}
+
+        <Text style={styles.h3}>Estimated Economic Impact of Corrective Action</Text>
+        <Text style={[styles.muted, { marginBottom: 6 }]}>
+          Risk-level indication only, based on this period&apos;s collected data — not a certified financial
+          estimate, and not a substitute for a professional cost-benefit analysis. No monetary figures are
+          projected because this app has no reliable basis for this yacht&apos;s specific energy or remediation
+          costs.
+        </Text>
+        {economicImpact.length === 0 ? (
+          <Text style={styles.muted}>No elevated cost-risk items identified this period.</Text>
+        ) : (
+          <View style={styles.table}>
+            <View style={styles.trHeader}>
+              <Text style={styles.thText}>Point / Parameter</Text>
+              <Text style={[styles.thText, { flex: 0.6 }]}>Risk</Text>
+              <Text style={styles.thText}>Cost Category</Text>
+              <Text style={{ ...styles.thText, flex: 2 }}>Description</Text>
+            </View>
+            {economicImpact.map((item, i) => (
+              <View key={i} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
+                <Text style={styles.td}>{item.pointName ?? "—"}</Text>
+                <Text style={[styles.td, { flex: 0.6, color: riskColor(item.riskLevel), fontFamily: FONT_BODY, fontWeight: 700 }]}>
+                  {RISK_LABEL[item.riskLevel]}
+                </Text>
+                <Text style={styles.td}>{item.costCategories.join(", ")}</Text>
+                <Text style={{ ...styles.td, flex: 2 }}>{item.description}</Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.divider} />
+        <Text style={styles.h3}>Conclusion</Text>
+        <Text>{aiInsights?.recommendedAction ?? "Continue routine monitoring — no action required at this time."}</Text>
       </Page>
 
-      {/* Data Quality, Methodology, Conclusion */}
+      {/* Data Quality, Methodology */}
       <Page size="A4" style={styles.page}>
         <Footer yachtName={yacht.name} />
-        <Text style={styles.h1}>20. Data Quality</Text>
+        <SectionHeading n={n()}>Data Quality</SectionHeading>
         <KeyValueRow
           label="Last Import"
           value={dataQualityDetail.lastImportDate ? fmtDate(dataQualityDetail.lastImportDate) : "—"}
@@ -476,7 +608,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
         <KeyValueRow label="Data Quality Score" value={coverage.dataQualityPct != null ? `${coverage.dataQualityPct}%` : "—"} />
 
         <View style={styles.divider} />
-        <Text style={styles.h1}>21. Methodology & Limitations</Text>
+        <SectionHeading n={n()}>Methodology & Limitations</SectionHeading>
         <Text style={{ marginBottom: 6 }}>
           Comfort, Biological Safety and Luxury Perception indices are weighted blends of parameter readings scored
           against configured threshold bands (preferred/warning/critical). Mould Risk Index is primarily
@@ -484,18 +616,16 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
           persistence, and TVOC as a minor contextual signal only. All weights and thresholds are configurable in
           Settings and sourced from ASHRAE, WELL Building Standard and EPA/WHO air quality guidance.
         </Text>
+        <Text style={{ marginBottom: 6 }}>
+          The Estimated Economic Impact section classifies risk level and cost category from deterministic rules
+          over this period&apos;s alerts and scores — it does not project a monetary amount and should not be read
+          as a financial estimate.
+        </Text>
         <Text style={{ color: COLORS.muted }}>
           This report is generated from sensor data for environmental monitoring and risk indication only. It does
           not replace microbiological laboratory analysis, HVAC engineering assessment, Legionella risk assessment,
           professional mould inspection, or other professional environmental investigation. AI interpretations are
           decision-support information, not medical, microbiological or engineering certification.
-        </Text>
-
-        <View style={styles.divider} />
-        <Text style={styles.h1}>22. Conclusion</Text>
-        <Text>
-          {aiInsights?.overallStatus ?? `Overall Environmental Score for the period: ${scores.overall ?? "—"}/100.`}{" "}
-          {aiInsights?.recommendedAction ?? ""}
         </Text>
       </Page>
     </Document>
@@ -517,10 +647,10 @@ function ScoreTable({
         <Text style={styles.thText}>Point</Text>
         <Text style={styles.thText}>Score</Text>
       </View>
-      {rows.map((r) => (
-        <View key={r.pointId} style={styles.tr}>
+      {rows.map((r, i) => (
+        <View key={r.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
           <Text style={styles.td}>{r.pointName}</Text>
-          <Text style={[styles.td, { color: bandColor(r[field], invert), fontFamily: "Helvetica-Bold" }]}>
+          <Text style={[styles.td, { color: bandColor(r[field], invert), fontFamily: FONT_BODY, fontWeight: 700 }]}>
             {r[field] ?? "—"}
           </Text>
         </View>

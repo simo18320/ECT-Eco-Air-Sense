@@ -85,6 +85,38 @@ export async function updateYacht(
   return { error: null, success: true };
 }
 
+export async function uploadYachtPhoto(
+  yachtId: string,
+  _prevState: YachtActionState,
+  formData: FormData,
+): Promise<YachtActionState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated.", success: false };
+  if (user.role !== "admin" && user.role !== "technical") {
+    return { error: "You do not have permission to edit yachts.", success: false };
+  }
+
+  const file = formData.get("file") as File | null;
+  if (!file || file.size === 0) return { error: "Select an image file.", success: false };
+  if (!file.type.startsWith("image/")) return { error: "Photo must be an image (PNG/JPG).", success: false };
+  if (file.size > 8 * 1024 * 1024) return { error: "File must be smaller than 8MB.", success: false };
+
+  const supabase = await createClient();
+  const ext = file.name.split(".").pop() ?? "jpg";
+  const path = `${user.companyId}/${yachtId}/photo/${Date.now()}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage
+    .from("yacht-files")
+    .upload(path, file, { contentType: file.type, upsert: true });
+  if (uploadError) return { error: uploadError.message, success: false };
+
+  const { error: updateError } = await supabase.from("yachts").update({ photo_url: path }).eq("id", yachtId);
+  if (updateError) return { error: updateError.message, success: false };
+
+  revalidatePath("/yacht-profile");
+  return { error: null, success: true };
+}
+
 export async function deleteYacht(yachtId: string) {
   const user = await getCurrentUser();
   if (!user || (user.role !== "admin" && user.role !== "technical")) {

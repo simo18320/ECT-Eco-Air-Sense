@@ -21,9 +21,11 @@ type Yacht = Tables<"yachts">;
 export function YachtList({
   yachts,
   canEdit,
+  photoUrls = {},
 }: {
   yachts: Yacht[];
   canEdit: boolean;
+  photoUrls?: Record<string, string>;
 }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [editingYacht, setEditingYacht] = useState<Yacht | null>(null);
@@ -95,7 +97,11 @@ export function YachtList({
                           <DialogHeader>
                             <DialogTitle>Edit {yacht.name}</DialogTitle>
                           </DialogHeader>
-                          <YachtForm yacht={yacht} onSuccess={() => setEditingYacht(null)} />
+                          <YachtForm
+                            yacht={yacht}
+                            photoUrl={photoUrls[yacht.id] ?? null}
+                            onSuccess={() => setEditingYacht(null)}
+                          />
                         </DialogContent>
                       </Dialog>
                       <Button

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
+import { YachtPhotoUpload } from "./yacht-photo-upload";
 import type { Tables } from "@/types/database";
 
 type Yacht = Tables<"yachts">;
@@ -36,9 +37,11 @@ const FIELDS: Array<{
 
 export function YachtForm({
   yacht,
+  photoUrl,
   onSuccess,
 }: {
   yacht?: Yacht;
+  photoUrl?: string | null;
   onSuccess: () => void;
 }) {
   const action = yacht ? updateYacht.bind(null, yacht.id) : createYacht;
@@ -57,6 +60,7 @@ export function YachtForm({
         </Alert>
       )}
       <div className="grid grid-cols-2 gap-4 max-h-[60vh] overflow-y-auto pr-1">
+        {yacht && <YachtPhotoUpload yachtId={yacht.id} photoUrl={photoUrl ?? null} />}
         {FIELDS.map((field) => (
           <div
             key={field.name}

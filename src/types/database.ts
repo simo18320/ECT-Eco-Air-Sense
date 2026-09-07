@@ -941,6 +941,7 @@ export type Database = {
           monitoring_start_date: string | null
           name: string
           owner_name: string | null
+          photo_url: string | null
           shipyard: string | null
           updated_at: string
           yacht_type: string | null
@@ -962,6 +963,7 @@ export type Database = {
           monitoring_start_date?: string | null
           name: string
           owner_name?: string | null
+          photo_url?: string | null
           shipyard?: string | null
           updated_at?: string
           yacht_type?: string | null
@@ -983,6 +985,7 @@ export type Database = {
           monitoring_start_date?: string | null
           name?: string
           owner_name?: string | null
+          photo_url?: string | null
           shipyard?: string | null
           updated_at?: string
           yacht_type?: string | null
