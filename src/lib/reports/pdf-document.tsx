@@ -126,10 +126,26 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }
 
-/** Section heading with an auto-incrementing, brass-coloured number prefix. */
-function SectionHeading({ n, children, style = styles.h1 }: { n: number; children: string; style?: Style }) {
+/**
+ * Section heading with an auto-incrementing, brass-coloured number prefix.
+ * `minPresenceAhead` is react-pdf's orphan/widow protection: it guarantees a
+ * page break can't fall in the first N points after this element, so a
+ * heading never ends up alone at the bottom of a page with its content
+ * pushed to the next one.
+ */
+function SectionHeading({
+  n,
+  children,
+  style = styles.h1,
+  minPresenceAhead = 50,
+}: {
+  n: number;
+  children: string;
+  style?: Style;
+  minPresenceAhead?: number;
+}) {
   return (
-    <Text style={style}>
+    <Text style={style} minPresenceAhead={minPresenceAhead}>
       <Text style={styles.sectionNum}>{n}. </Text>
       {children}
     </Text>
@@ -375,7 +391,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
               </SectionHeading>
               <BarChart data={rows.map((r) => ({ label: r.point.pointName, value: r.param!.avg }))} unit={unit} />
               <View style={styles.table}>
-                <View style={styles.trHeader}>
+                <View style={styles.trHeader} minPresenceAhead={30}>
                   <Text style={styles.thText}>Point</Text>
                   <Text style={styles.thText}>Avg</Text>
                   <Text style={styles.thText}>Min</Text>
@@ -383,7 +399,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
                   <Text style={styles.thText}>Trend</Text>
                 </View>
                 {rows.map((r, i) => (
-                  <View key={r.point.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
+                  <View key={r.point.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]} wrap={false}>
                     <Text style={styles.td}>{r.point.pointName}</Text>
                     <Text style={styles.td}>{fmt(r.param!.avg)}</Text>
                     <Text style={styles.td}>{fmt(r.param!.min)}</Text>
@@ -430,7 +446,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
           <Text style={styles.muted}>No sustained alerts open during this reporting period.</Text>
         ) : (
           <View style={styles.table}>
-            <View style={styles.trHeader}>
+            <View style={styles.trHeader} minPresenceAhead={30}>
               <Text style={styles.thText}>Point</Text>
               <Text style={styles.thText}>Parameter</Text>
               <Text style={styles.thText}>Severity</Text>
@@ -438,7 +454,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
               <Text style={styles.thText}>Duration</Text>
             </View>
             {dataSummary.openAlerts.map((a, i) => (
-              <View key={i} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
+              <View key={i} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]} wrap={false}>
                 <Text style={styles.td}>{a.pointName}</Text>
                 <Text style={styles.td}>{PARAM_LABELS[a.parameter] ?? a.parameter}</Text>
                 <Text style={[styles.td, { color: a.severity === "critical" ? COLORS.critical : COLORS.warning }]}>
@@ -453,7 +469,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
 
         <SectionHeading n={n()}>Monitoring Point Analysis</SectionHeading>
         <View style={styles.table}>
-          <View style={styles.trHeader}>
+          <View style={styles.trHeader} minPresenceAhead={30}>
             <Text style={styles.thText}>Point</Text>
             <Text style={styles.thText}>Overall</Text>
             <Text style={styles.thText}>Comfort</Text>
@@ -462,7 +478,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
             <Text style={styles.thText}>Luxury</Text>
           </View>
           {pointScores.map((p, i) => (
-            <View key={p.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
+            <View key={p.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]} wrap={false}>
               <Text style={styles.td}>{p.pointName}</Text>
               <Text style={styles.td}>{p.overall ?? "—"}</Text>
               <Text style={styles.td}>{p.comfort ?? "—"}</Text>
@@ -515,14 +531,14 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
         <Footer yachtName={yacht.name} />
         <SectionHeading n={n()}>Final Analysis — Sampling Period</SectionHeading>
 
-        <Text style={styles.h3}>Summary</Text>
+        <Text style={styles.h3} minPresenceAhead={50}>Summary</Text>
         <Text style={{ marginBottom: 4 }}>
           {aiInsights?.overallStatus ?? `Overall Environmental Score for the period: ${scores.overall ?? "—"}/100.`}
         </Text>
         {aiInsights?.keyFinding && <Text style={{ marginBottom: 4 }}>{aiInsights.keyFinding}</Text>}
         {aiInsights?.mainRisk && <Text style={{ color: COLORS.muted }}>{aiInsights.mainRisk}</Text>}
 
-        <Text style={styles.h3}>Results & Interpretation</Text>
+        <Text style={styles.h3} minPresenceAhead={50}>Results & Interpretation</Text>
         {aiInsights && aiInsights.findings.length > 0 ? (
           <>
             <Text style={styles.muted}>
@@ -549,7 +565,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
           <Text style={styles.muted}>No specific findings this period.</Text>
         )}
 
-        <Text style={styles.h3}>Recommendations</Text>
+        <Text style={styles.h3} minPresenceAhead={50}>Recommendations</Text>
         {aiInsights && aiInsights.findings.length > 0 ? (
           aiInsights.findings.map((f, i) => (
             <Text key={i} style={{ marginBottom: 4 }}>
@@ -560,7 +576,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
           <Text style={styles.muted}>No specific actions recommended this period.</Text>
         )}
 
-        <Text style={styles.h3}>Estimated Economic Impact of Corrective Action</Text>
+        <Text style={styles.h3} minPresenceAhead={50}>Estimated Economic Impact of Corrective Action</Text>
         <Text style={[styles.muted, { marginBottom: 6 }]}>
           Risk-level indication only, based on this period&apos;s collected data — not a certified financial
           estimate, and not a substitute for a professional cost-benefit analysis. No monetary figures are
@@ -571,14 +587,14 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
           <Text style={styles.muted}>No elevated cost-risk items identified this period.</Text>
         ) : (
           <View style={styles.table}>
-            <View style={styles.trHeader}>
+            <View style={styles.trHeader} minPresenceAhead={30}>
               <Text style={styles.thText}>Point / Parameter</Text>
               <Text style={[styles.thText, { flex: 0.6 }]}>Risk</Text>
               <Text style={styles.thText}>Cost Category</Text>
               <Text style={{ ...styles.thText, flex: 2 }}>Description</Text>
             </View>
             {economicImpact.map((item, i) => (
-              <View key={i} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
+              <View key={i} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]} wrap={false}>
                 <Text style={styles.td}>{item.pointName ?? "—"}</Text>
                 <Text style={[styles.td, { flex: 0.6, color: riskColor(item.riskLevel), fontFamily: FONT_BODY, fontWeight: 700 }]}>
                   {RISK_LABEL[item.riskLevel]}
@@ -591,7 +607,7 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
         )}
 
         <View style={styles.divider} />
-        <Text style={styles.h3}>Conclusion</Text>
+        <Text style={styles.h3} minPresenceAhead={50}>Conclusion</Text>
         <Text>{aiInsights?.recommendedAction ?? "Continue routine monitoring — no action required at this time."}</Text>
       </Page>
 
@@ -643,12 +659,12 @@ function ScoreTable({
 }) {
   return (
     <View style={styles.table}>
-      <View style={styles.trHeader}>
+      <View style={styles.trHeader} minPresenceAhead={30}>
         <Text style={styles.thText}>Point</Text>
         <Text style={styles.thText}>Score</Text>
       </View>
       {rows.map((r, i) => (
-        <View key={r.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]}>
+        <View key={r.pointId} style={[styles.tr, i % 2 === 1 ? styles.trAlt : undefined]} wrap={false}>
           <Text style={styles.td}>{r.pointName}</Text>
           <Text style={[styles.td, { color: bandColor(r[field], invert), fontFamily: FONT_BODY, fontWeight: 700 }]}>
             {r[field] ?? "—"}
