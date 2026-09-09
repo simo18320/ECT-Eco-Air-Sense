@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/types/database";
+import { sendCriticalAlertEmail, type CriticalAlertItem } from "@/lib/email/critical-alert";
 
 /**
  * Alert engine (§21-22): persistence-based, not immediate-threshold-crossing.
@@ -81,26 +82,23 @@ export async function evaluateAlertsForYacht(
   supabase: SupabaseClient<Database>,
   yachtId: string,
 ): Promise<{ opened: number; updated: number; resolved: number }> {
-  const [{ data: points }, { data: yachtThresholds }, { data: companyThresholds }] = await Promise.all([
-    supabase.from("monitoring_points").select("id").eq("yacht_id", yachtId).eq("active", true),
+  const [{ data: points }, { data: yacht }, { data: yachtThresholds }] = await Promise.all([
+    supabase.from("monitoring_points").select("id, name").eq("yacht_id", yachtId).eq("active", true),
+    supabase.from("yachts").select("company_id, name, alert_notification_email").eq("id", yachtId).single(),
     supabase.from("thresholds").select("*").eq("yacht_id", yachtId),
-    supabase
-      .from("yachts")
-      .select("company_id")
-      .eq("id", yachtId)
-      .single()
-      .then(async ({ data }) =>
-        data
-          ? supabase.from("thresholds").select("*").eq("company_id", data.company_id).is("yacht_id", null)
-          : { data: [] as Threshold[] },
-      ),
   ]);
+
+  const { data: companyThresholds } = yacht
+    ? await supabase.from("thresholds").select("*").eq("company_id", yacht.company_id).is("yacht_id", null)
+    : { data: [] as Threshold[] };
 
   const thresholdByParam = new Map<string, Threshold>();
   for (const t of companyThresholds ?? []) thresholdByParam.set(t.parameter, t);
   for (const t of yachtThresholds ?? []) thresholdByParam.set(t.parameter, t); // yacht-specific wins
 
-  const pointIds = (points ?? []).map((p) => p.id);
+  const pointNameById = new Map((points ?? []).map((p) => [p.id, p.name]));
+  const pointIds = [...pointNameById.keys()];
+  const newCriticalAlerts: CriticalAlertItem[] = [];
   let opened = 0;
   let updated = 0;
   let resolved = 0;
@@ -167,7 +165,29 @@ export async function evaluateAlertsForYacht(
           recommended_action: RECOMMENDED_ACTION[parameter] ?? "Investigate the cause of this sustained deviation.",
         });
         opened++;
+        if (streak.severity === "critical") {
+          newCriticalAlerts.push({
+            pointName: pointNameById.get(pointId) ?? "Unknown point",
+            parameter,
+            value: streak.currentValue,
+          });
+        }
       }
+    }
+  }
+
+  // Batched — one email per run covering every new critical alert, not one
+  // per alert, so several opening in the same sync don't flood the inbox.
+  // Never lets an email-provider hiccup fail the alert evaluation itself.
+  if (newCriticalAlerts.length > 0 && yacht?.alert_notification_email) {
+    try {
+      await sendCriticalAlertEmail({
+        to: yacht.alert_notification_email,
+        yachtName: yacht.name,
+        alerts: newCriticalAlerts,
+      });
+    } catch (err) {
+      console.error("Failed to send critical alert email:", err);
     }
   }
 

@@ -33,6 +33,12 @@ const FIELDS: Array<{
   { name: "monitoring_end_date", label: "Monitoring End Date", type: "date" },
   { name: "monitoring_frequency", label: "Monitoring Frequency", placeholder: "e.g. Weekly" },
   { name: "monitoring_provider", label: "Monitoring Provider" },
+  {
+    name: "alert_notification_email",
+    label: "Alert Notification Email",
+    type: "email",
+    placeholder: "Sent a critical alert email when one opens (optional)",
+  },
 ];
 
 export function YachtForm({
@@ -64,7 +70,11 @@ export function YachtForm({
         {FIELDS.map((field) => (
           <div
             key={field.name}
-            className={field.name === "name" ? "col-span-2 space-y-2" : "space-y-2"}
+            className={
+              field.name === "name" || field.name === "alert_notification_email"
+                ? "col-span-2 space-y-2"
+                : "space-y-2"
+            }
           >
             <Label htmlFor={field.name}>{field.label}</Label>
             <Input

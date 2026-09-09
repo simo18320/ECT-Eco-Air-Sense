@@ -37,8 +37,11 @@ function readYachtFormData(formData: FormData, companyId: string): TablesInsert<
     monitoring_end_date: str("monitoring_end_date"),
     monitoring_frequency: str("monitoring_frequency"),
     monitoring_provider: str("monitoring_provider") ?? "AirCare / Ionex",
+    alert_notification_email: str("alert_notification_email"),
   };
 }
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export async function createYacht(
   _prevState: YachtActionState,
@@ -52,6 +55,9 @@ export async function createYacht(
 
   const payload = readYachtFormData(formData, user.companyId);
   if (!payload.name) return { error: "Yacht name is required.", success: false };
+  if (payload.alert_notification_email && !EMAIL_RE.test(payload.alert_notification_email)) {
+    return { error: "Alert notification email looks invalid.", success: false };
+  }
 
   const supabase = await createClient();
   const { error } = await supabase.from("yachts").insert(payload);
@@ -75,6 +81,9 @@ export async function updateYacht(
 
   const payload = readYachtFormData(formData, user.companyId);
   if (!payload.name) return { error: "Yacht name is required.", success: false };
+  if (payload.alert_notification_email && !EMAIL_RE.test(payload.alert_notification_email)) {
+    return { error: "Alert notification email looks invalid.", success: false };
+  }
 
   const supabase = await createClient();
   const { error } = await supabase.from("yachts").update(payload).eq("id", yachtId);

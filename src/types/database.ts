@@ -925,6 +925,7 @@ export type Database = {
       }
       yachts: {
         Row: {
+          alert_notification_email: string | null
           build_year: number | null
           captain_name: string | null
           company_id: string
@@ -947,6 +948,7 @@ export type Database = {
           yacht_type: string | null
         }
         Insert: {
+          alert_notification_email?: string | null
           build_year?: number | null
           captain_name?: string | null
           company_id: string
@@ -969,6 +971,7 @@ export type Database = {
           yacht_type?: string | null
         }
         Update: {
+          alert_notification_email?: string | null
           build_year?: number | null
           captain_name?: string | null
           company_id?: string
