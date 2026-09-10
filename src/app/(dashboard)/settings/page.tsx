@@ -4,12 +4,14 @@ import { getCurrentUser } from "@/lib/data/current-user";
 import { getYachtContext } from "@/lib/data/current-yacht";
 import { getUserYachtAccessMap } from "@/lib/data/user-yacht-access";
 import { getEffectiveThresholds } from "@/lib/data/thresholds";
+import { getUserVisitStats } from "@/lib/data/user-visits";
 import { parameterMeta } from "@/lib/parameters";
 import { BrandingForm } from "@/components/settings/branding-form";
 import { UserRoleTable } from "@/components/settings/user-role-table";
 import { CreateUserDialog } from "@/components/settings/create-user-dialog";
 import { ScoringWeightsForm } from "@/components/settings/scoring-weights-form";
 import { ThresholdOverrideDialog } from "@/components/settings/threshold-override-dialog";
+import { UserVisitStatsTable } from "@/components/settings/user-visit-stats-table";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +44,7 @@ export default async function SettingsPage() {
 
   const thresholds = yacht ? await getEffectiveThresholds(yacht.id) : [];
   const canEditThresholds = user.role === "admin" || user.role === "technical";
+  const visitStats = user.role === "admin" ? await getUserVisitStats(user.companyId) : [];
 
   const weightsByType = new Map<Enums<"scoring_config_type">, Record<string, number>>();
   for (const c of scoringConfigs ?? []) weightsByType.set(c.config_type, c.weights as Record<string, number>);
@@ -100,6 +103,27 @@ export default async function SettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {user.role === "admin" && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Platform Usage</CardTitle>
+            <CardDescription>
+              How often each user has actually opened the dashboard — one count per distinct day, not
+              per page load, so staying logged in for days doesn&apos;t inflate the number.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {visitStats.length === 0 ? (
+              <Alert>
+                <AlertDescription>No visits recorded yet.</AlertDescription>
+              </Alert>
+            ) : (
+              <UserVisitStatsTable stats={visitStats} />
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader>

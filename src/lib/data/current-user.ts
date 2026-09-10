@@ -30,6 +30,23 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
   const company = Array.isArray(profile.companies) ? profile.companies[0] : profile.companies;
 
+  // One row per user per day — "distinct visits", not raw page loads. RLS
+  // restricts insert to the caller's own user_id, so this is safe to run
+  // with the regular authenticated client. Never let a tracking hiccup
+  // break the page: log and move on.
+  try {
+    await supabase.from("user_visit_log").upsert(
+      {
+        user_id: profile.id,
+        company_id: profile.company_id,
+        visit_date: new Date().toISOString().slice(0, 10),
+      },
+      { onConflict: "user_id,visit_date", ignoreDuplicates: true },
+    );
+  } catch (err) {
+    console.error("Failed to log platform visit:", err);
+  }
+
   return {
     id: profile.id,
     email: profile.email,
