@@ -24,9 +24,21 @@ export default function ResetPasswordPage() {
 
   useEffect(() => {
     const supabase = createClient();
-    supabase.auth.getSession().then(({ data }) => {
-      setSessionReady(data.session ? "ready" : "missing");
-    });
+    const code = new URL(window.location.href).searchParams.get("code");
+
+    // The browser client defaults to the PKCE flow: a recovery link lands
+    // here as ?code=... and getSession() alone never picks that up — it
+    // has to be explicitly exchanged for a session first. Without this,
+    // a perfectly valid, just-clicked link shows as "invalid or expired".
+    if (code) {
+      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+        setSessionReady(error ? "missing" : "ready");
+      });
+    } else {
+      supabase.auth.getSession().then(({ data }) => {
+        setSessionReady(data.session ? "ready" : "missing");
+      });
+    }
   }, []);
 
   return (
