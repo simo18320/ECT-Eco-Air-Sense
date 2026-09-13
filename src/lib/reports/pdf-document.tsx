@@ -241,6 +241,43 @@ const PARAM_LABELS: Record<string, string> = {
   pm10: "PM10",
 };
 
+// General reference only — not yacht-specific threshold values (those are
+// configurable per yacht and already shown alongside each trend chart).
+// Grounded in the same standards bodies already cited in Methodology &
+// Limitations (ASHRAE, WELL, WHO/EPA), kept hedged rather than diagnostic.
+const PARAMETER_HEALTH_NOTES: Record<string, { standard: string; effect: string }> = {
+  temperature: {
+    standard: "ASHRAE 55 thermal comfort range",
+    effect:
+      "Outside the comfort range, occupants may experience thermal discomfort, reduced perceived air quality and lower guest/crew satisfaction. Sustained high temperatures can also accelerate degradation of finishes, wood and electronic equipment.",
+  },
+  relative_humidity: {
+    standard: "ASHRAE / WHO indoor dampness guidance",
+    effect:
+      "Sustained high humidity increases the risk of condensation, mould and mildew growth, musty odours, and damage to wood, textiles and electronics. Very low humidity can cause dry skin and eyes, static discharge, and drying/cracking of fine wood joinery.",
+  },
+  co2: {
+    standard: "ASHRAE 62.1 / WELL Building Standard Air feature A01",
+    effect:
+      "Elevated CO2 indicates fresh-air ventilation is not keeping pace with occupancy. Sustained high levels are commonly associated with drowsiness, reduced concentration and headaches. CO2 is primarily a ventilation-adequacy indicator rather than a direct toxin at these ranges.",
+  },
+  tvoc: {
+    standard: "General indoor air quality guidance (e.g. German AGOF/UBA bands)",
+    effect:
+      "Elevated TVOC indicates volatile organic compounds from sources such as cleaning products, adhesives, finishes, textiles or stored chemicals. Sustained high levels are commonly associated with odour, and eye, nose or throat irritation.",
+  },
+  pm2_5: {
+    standard: "US EPA AQI breakpoints for PM2.5 (24h)",
+    effect:
+      "Fine particulate matter that can penetrate deep into the respiratory system. Elevated levels are associated in the literature with respiratory and cardiovascular irritation, particularly for sensitive individuals.",
+  },
+  pm10: {
+    standard: "WHO / US EPA AQI breakpoints for PM10 (24h)",
+    effect:
+      "Coarser particulate matter such as dust and combustion particles. Elevated levels are associated with respiratory irritation and can aggravate allergies or asthma.",
+  },
+};
+
 const RISK_LABEL: Record<EconomicImpactRiskLevel, string> = {
   high: "HIGH",
   medium: "MEDIUM",
@@ -642,6 +679,30 @@ export function ReportDocument({ snapshot }: { snapshot: ReportSnapshot }) {
           not replace microbiological laboratory analysis, HVAC engineering assessment, Legionella risk assessment,
           professional mould inspection, or other professional environmental investigation. AI interpretations are
           decision-support information, not medical, microbiological or engineering certification.
+        </Text>
+      </Page>
+
+      {/* Parameter reference */}
+      <Page size="A4" style={styles.page}>
+        <Footer yachtName={yacht.name} />
+        <SectionHeading n={n()}>Parameter Reference — Effects When Out of Range</SectionHeading>
+        <Text style={{ marginBottom: 10 }}>
+          General reference on what sustained readings outside the preferred range can indicate or contribute to for
+          each monitored parameter, independent of this yacht&apos;s configured threshold values (shown alongside
+          each trend chart in this report).
+        </Text>
+        {(["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10"] as const).map((parameter) => (
+          <View key={parameter} style={{ marginBottom: 10 }} wrap={false}>
+            <Text style={styles.h3}>{PARAM_LABELS[parameter]}</Text>
+            <Text style={{ marginBottom: 2 }}>{PARAMETER_HEALTH_NOTES[parameter].effect}</Text>
+            <Text style={styles.muted}>Reference: {PARAMETER_HEALTH_NOTES[parameter].standard}</Text>
+          </View>
+        ))}
+        <View style={styles.divider} />
+        <Text style={{ color: COLORS.muted }}>
+          General environmental reference only, based on published standards and guidance — not a medical,
+          microbiological or engineering assessment of this yacht or its occupants. See Methodology &amp;
+          Limitations.
         </Text>
       </Page>
     </Document>
