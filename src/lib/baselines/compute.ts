@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { percentile } from "@/lib/parameters";
+import { PARAMETER_META, percentile } from "@/lib/parameters";
 
 /** Below this many readings, a p10-p90 range is too noisy to call a baseline. */
 export const MIN_BASELINE_SAMPLE_SIZE = 20;
@@ -45,35 +45,39 @@ export async function computeBaselinesForPoints(
 
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+  const knownParameters = Object.keys(PARAMETER_META);
 
-  const { data } = await supabase
-    .from("measurements")
-    .select("monitoring_point_id, parameter, value, timestamp")
-    .in("monitoring_point_id", pointIds)
-    .gte("timestamp", since)
-    .limit(20000);
+  // Fetched per (point, parameter) — ordered and individually capped —
+  // rather than one unordered batch across every point/parameter combined.
+  // A single `.limit()` over the combined set can (and did, on real data)
+  // return a slice dominated by a couple of parameters, leaving other
+  // point/parameter pairs with zero rows and silently no baseline.
+  await Promise.all(
+    pointIds.flatMap((pointId) =>
+      knownParameters.map(async (parameter) => {
+        const { data } = await supabase
+          .from("measurements")
+          .select("value, timestamp")
+          .eq("monitoring_point_id", pointId)
+          .eq("parameter", parameter)
+          .gte("timestamp", since)
+          .order("timestamp", { ascending: true })
+          .limit(5000);
+        if (!data || data.length === 0) return;
 
-  const grouped = new Map<string, { value: number; timestamp: string }[]>();
-  for (const row of data ?? []) {
-    const key = `${row.monitoring_point_id}:${row.parameter}`;
-    (grouped.get(key) ?? grouped.set(key, []).get(key)!).push({
-      value: row.value,
-      timestamp: row.timestamp,
-    });
-  }
-
-  for (const [key, readings] of grouped) {
-    const values = readings.map((r) => r.value);
-    const dayValues = readings.filter((r) => !isNightHour(r.timestamp)).map((r) => r.value);
-    const nightValues = readings.filter((r) => isNightHour(r.timestamp)).map((r) => r.value);
-    result.set(key, {
-      overallRange: rangeFromValues(values),
-      dayRange: rangeFromValues(dayValues),
-      nightRange: rangeFromValues(nightValues),
-      sampleSize: readings.length,
-      insufficientData: readings.length < MIN_BASELINE_SAMPLE_SIZE,
-    });
-  }
+        const values = data.map((r) => r.value);
+        const dayValues = data.filter((r) => !isNightHour(r.timestamp)).map((r) => r.value);
+        const nightValues = data.filter((r) => isNightHour(r.timestamp)).map((r) => r.value);
+        result.set(`${pointId}:${parameter}`, {
+          overallRange: rangeFromValues(values),
+          dayRange: rangeFromValues(dayValues),
+          nightRange: rangeFromValues(nightValues),
+          sampleSize: data.length,
+          insufficientData: data.length < MIN_BASELINE_SAMPLE_SIZE,
+        });
+      }),
+    ),
+  );
 
   return result;
 }

@@ -80,22 +80,30 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
   const paramPointAverages: Record<string, { pointName: string; avg: number }[]> = {};
 
   for (const point of points ?? []) {
-    const { data: measurements } = await supabase
-      .from("measurements")
-      .select("parameter, value, timestamp")
-      .eq("monitoring_point_id", point.id)
-      .gte("timestamp", periodStart.toISOString())
-      .lte("timestamp", periodEnd.toISOString())
-      .limit(5000);
-
+    // Fetched per parameter (ordered, individually capped) rather than one
+    // unordered batch for the whole point — a busy point can log tens of
+    // thousands of rows over the period, and an unordered `.limit()` can
+    // return a slice dominated by one or two parameters, silently starving
+    // the AI engine of data for the rest (proven on real data: a point with
+    // ~2500 rows/parameter over 14 days returned only 2 of its 6 parameters
+    // under the old single-query approach).
     const byParam = new Map<string, { timestamp: string; value: number }[]>();
-    for (const m of measurements ?? []) {
-      if (!PARAMETERS.includes(m.parameter)) continue;
-      (byParam.get(m.parameter) ?? byParam.set(m.parameter, []).get(m.parameter)!).push({
-        timestamp: m.timestamp,
-        value: m.value,
-      });
-    }
+    await Promise.all(
+      PARAMETERS.map(async (parameter) => {
+        const { data: rows } = await supabase
+          .from("measurements")
+          .select("value, timestamp")
+          .eq("monitoring_point_id", point.id)
+          .eq("parameter", parameter)
+          .gte("timestamp", periodStart.toISOString())
+          .lte("timestamp", periodEnd.toISOString())
+          .order("timestamp", { ascending: true })
+          .limit(5000);
+        if (rows && rows.length > 0) {
+          byParam.set(parameter, rows.map((r) => ({ timestamp: r.timestamp, value: r.value })));
+        }
+      }),
+    );
 
     const parameters: ParameterTrend[] = [];
     for (const [parameter, readings] of byParam) {
