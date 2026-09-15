@@ -24,11 +24,38 @@ export type ImportActionState = {
 };
 
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const IMPORT_BUCKET = "yacht-files";
+
+export type UploadUrlState = { path: string; token: string } | { error: string };
+
+/**
+ * Signed upload slot for the client to PUT the file directly to Supabase
+ * Storage, bypassing this server entirely. Vercel Functions (including
+ * Server Actions) enforce a hard ~4.5MB request body limit at the platform
+ * level — next.config's bodySizeLimit only raises Next.js's own separate
+ * cap and cannot override it. AirCare exports routinely exceed 4.5MB, so
+ * the raw file can never travel through a Server Action body; only this
+ * small signed-URL request does.
+ */
+export async function createAircareImportUploadUrl(yachtId: string): Promise<UploadUrlState> {
+  const user = await getCurrentUser();
+  if (!user) return { error: "Not authenticated." };
+  if (user.role !== "admin" && user.role !== "technical") {
+    return { error: "You do not have permission to import data." };
+  }
+
+  const supabase = await createClient();
+  const path = `${user.companyId}/${yachtId}/imports/${Date.now()}.xlsx`;
+  const { data, error } = await supabase.storage.from(IMPORT_BUCKET).createSignedUploadUrl(path);
+  if (error || !data) return { error: error?.message ?? "Could not prepare upload." };
+
+  return { path: data.path, token: data.token };
+}
 
 export async function importAircareFile(
   yachtId: string,
-  _prevState: ImportActionState,
-  formData: FormData,
+  filePath: string,
+  fileName: string,
 ): Promise<ImportActionState> {
   const user = await getCurrentUser();
   if (!user) return { error: "Not authenticated.", success: false, summary: null };
@@ -36,16 +63,9 @@ export async function importAircareFile(
     return { error: "You do not have permission to import data.", success: false, summary: null };
   }
 
-  const file = formData.get("file") as File | null;
-  if (!file || file.size === 0) {
-    return { error: "Select a file to import.", success: false, summary: null };
-  }
-  if (file.size > MAX_FILE_SIZE) {
-    return { error: "File is larger than 25MB.", success: false, summary: null };
-  }
   const isXlsx =
-    file.name.toLowerCase().endsWith(".xlsx") ||
-    file.type === "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+    fileName.toLowerCase().endsWith(".xlsx") ||
+    filePath.toLowerCase().endsWith(".xlsx");
   if (!isXlsx) {
     return {
       error: "Only .xlsx exports are supported right now. CSV/XLS support is planned — ask if you need it sooner.",
@@ -59,17 +79,35 @@ export async function importAircareFile(
   const { data: yacht } = await supabase.from("yachts").select("id").eq("id", yachtId).single();
   if (!yacht) return { error: "Yacht not found.", success: false, summary: null };
 
+  const { data: fileBlob, error: downloadError } = await supabase.storage.from(IMPORT_BUCKET).download(filePath);
+  if (downloadError || !fileBlob) {
+    return {
+      error: `Could not read the uploaded file: ${downloadError?.message ?? "unknown error"}`,
+      success: false,
+      summary: null,
+    };
+  }
+  if (fileBlob.size > MAX_FILE_SIZE) {
+    await supabase.storage.from(IMPORT_BUCKET).remove([filePath]);
+    return { error: "File is larger than 25MB.", success: false, summary: null };
+  }
+
   let parsed;
   try {
-    const buffer = await file.arrayBuffer();
+    const buffer = await fileBlob.arrayBuffer();
     parsed = await parseAircareWorkbook(buffer);
   } catch (err) {
+    await supabase.storage.from(IMPORT_BUCKET).remove([filePath]);
     return {
       error: `Could not read this file as an AirCare export: ${err instanceof Error ? err.message : String(err)}`,
       success: false,
       summary: null,
     };
   }
+
+  // The raw export is only a transient upload vehicle — everything the app
+  // needs going forward (rows, errors, mapping) is already captured below.
+  await supabase.storage.from(IMPORT_BUCKET).remove([filePath]);
 
   if (parsed.rows.length === 0) {
     return {
@@ -84,7 +122,7 @@ export async function importAircareFile(
     .insert({
       yacht_id: yachtId,
       uploaded_by: user.id,
-      file_name: file.name,
+      file_name: fileName,
       file_type: "xlsx",
       status: "processing",
       mapping_profile: parsed.mappingUsed,

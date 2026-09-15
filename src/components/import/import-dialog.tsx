@@ -1,8 +1,9 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState, useTransition } from "react";
 import { Upload, CheckCircle2, AlertTriangle } from "lucide-react";
-import { importAircareFile } from "@/lib/actions/import";
+import { createAircareImportUploadUrl, importAircareFile, type ImportActionState } from "@/lib/actions/import";
+import { createClient } from "@/lib/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,14 +38,62 @@ function formatDate(iso: string | null) {
   }) + " UTC";
 }
 
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
+const INITIAL_STATE: ImportActionState = { error: null, success: false, summary: null };
+
 export function ImportDialog({ yachtId }: { yachtId: string }) {
   const [open, setOpen] = useState(false);
-  const importAction = importAircareFile.bind(null, yachtId);
-  const [state, formAction, pending] = useActionState(importAction, {
-    error: null,
-    success: false,
-    summary: null,
-  });
+  const [state, setState] = useState<ImportActionState>(INITIAL_STATE);
+  const [pending, startTransition] = useTransition();
+
+  function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const file = (e.currentTarget.elements.namedItem("file") as HTMLInputElement | null)?.files?.[0];
+    if (!file) {
+      setState({ error: "Select a file to import.", success: false, summary: null });
+      return;
+    }
+    if (!file.name.toLowerCase().endsWith(".xlsx")) {
+      setState({
+        error: "Only .xlsx exports are supported right now. CSV/XLS support is planned — ask if you need it sooner.",
+        success: false,
+        summary: null,
+      });
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setState({ error: "File is larger than 25MB.", success: false, summary: null });
+      return;
+    }
+
+    startTransition(async () => {
+      setState(INITIAL_STATE);
+
+      // Uploaded directly to Supabase Storage from the browser via a signed
+      // URL rather than sent through this Server Action — Vercel Functions
+      // (Server Actions included) cap the request body at ~4.5MB regardless
+      // of app config, and AirCare exports routinely run several MB.
+      const slot = await createAircareImportUploadUrl(yachtId);
+      if ("error" in slot) {
+        setState({ error: slot.error, success: false, summary: null });
+        return;
+      }
+
+      const supabase = createClient();
+      const { error: uploadError } = await supabase.storage
+        .from("yacht-files")
+        .uploadToSignedUrl(slot.path, slot.token, file, {
+          contentType: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        });
+      if (uploadError) {
+        setState({ error: `Upload failed: ${uploadError.message}`, success: false, summary: null });
+        return;
+      }
+
+      const result = await importAircareFile(yachtId, slot.path, file.name);
+      setState(result);
+    });
+  }
 
   return (
     <Dialog
@@ -126,7 +175,7 @@ export function ImportDialog({ yachtId }: { yachtId: string }) {
             </Button>
           </div>
         ) : (
-          <form action={formAction} className="space-y-4">
+          <form onSubmit={handleSubmit} className="space-y-4">
             {state.error && (
               <Alert variant="destructive">
                 <AlertDescription>{state.error}</AlertDescription>
