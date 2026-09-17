@@ -4,7 +4,7 @@ import type { LatestReading } from "@/lib/data/monitoring-points";
 import type { PointBaseline } from "@/lib/baselines/compute";
 import type { Tables } from "@/types/database";
 
-const PARAM_ORDER = ["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10"];
+const PARAM_ORDER = ["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10", "battery"];
 const PARAM_LABELS: Record<string, string> = {
   temperature: "Temp",
   relative_humidity: "RH",
@@ -12,6 +12,7 @@ const PARAM_LABELS: Record<string, string> = {
   tvoc: "TVOC",
   pm2_5: "PM2.5",
   pm10: "PM10",
+  battery: "Battery",
 };
 
 function formatValue(parameter: string, value: number) {
@@ -76,6 +77,24 @@ export function LatestReadingsGrid({
                 <>
                   <div className="grid grid-cols-3 gap-2">
                     {sorted.map((r) => {
+                      if (r.parameter === "battery") {
+                        // AirCare reports this as a raw status code (unit "Status"),
+                        // not a charge percentage — every sensor has only ever
+                        // reported 0 so far and there's no public documentation for
+                        // what a non-zero value means. Shown as a plain OK/Alert
+                        // status rather than a fabricated percentage gauge.
+                        const isOk = r.value === 0;
+                        return (
+                          <div key={r.parameter} className="text-center">
+                            <div className="text-xs text-muted-foreground">{PARAM_LABELS.battery}</div>
+                            <div
+                              className={`text-sm font-semibold ${isOk ? "text-status-good" : "text-status-warning"}`}
+                            >
+                              {isOk ? "OK" : `Alert (${r.value})`}
+                            </div>
+                          </div>
+                        );
+                      }
                       const baseline = baselines?.get(`${point.id}:${r.parameter}`);
                       const range = baseline?.overallRange ?? null;
                       const outsideBaseline = range != null && (r.value < range[0] || r.value > range[1]);
