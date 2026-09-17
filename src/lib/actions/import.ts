@@ -171,8 +171,12 @@ export async function importAircareFile(
     }
   }
 
-  // Insert measurements in batches, upserting on the (point, parameter, timestamp) uniqueness
-  // so re-uploading an overlapping week updates values rather than erroring.
+  // Insert measurements in batches, filling gaps only (ON CONFLICT DO NOTHING
+  // on the (point, parameter, timestamp) uniqueness) — a manual export must
+  // never overwrite a value the automatic AirCare sync already captured for
+  // that exact instant. The user runs this import several times a day
+  // alongside the automatic sync; without this, whichever one happened to
+  // run last would silently win.
   const measurementRows: TablesInsert<"measurements">[] = parsed.rows.map((r) => ({
     monitoring_point_id: codeToPointId.get(r.pointCode)!,
     "timestamp": r.timestamp.toISOString(),
@@ -189,7 +193,11 @@ export async function importAircareFile(
     const batch = measurementRows.slice(i, i + BATCH_SIZE);
     const { error, count } = await supabase
       .from("measurements")
-      .upsert(batch, { onConflict: "monitoring_point_id,parameter,timestamp", count: "exact" });
+      .upsert(batch, {
+        onConflict: "monitoring_point_id,parameter,timestamp",
+        ignoreDuplicates: true,
+        count: "exact",
+      });
     if (error) {
       insertErrors.push(error.message);
     } else {
