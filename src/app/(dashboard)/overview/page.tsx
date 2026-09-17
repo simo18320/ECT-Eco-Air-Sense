@@ -15,6 +15,7 @@ import { ScoreCard } from "@/components/scoring/score-card";
 import { ExecutiveBriefingCard } from "@/components/ai-insights/executive-briefing-card";
 import { GenerateInsightsButton } from "@/components/ai-insights/generate-button";
 import { getLatestExecutiveBriefing } from "@/lib/data/ai-insights";
+import { AircareSyncButton } from "@/components/import/aircare-sync-button";
 
 export default async function OverviewPage() {
   const user = await getCurrentUser();
@@ -23,6 +24,7 @@ export default async function OverviewPage() {
   const { yacht, allYachts } = await getYachtContext();
   const hasYachts = allYachts.length > 0;
   const canManage = user.role === "admin" || user.role === "technical";
+  const canSync = user.role === "admin" || user.role === "technical" || user.role === "captain";
 
   let pointCount = 0;
   let lastImportAt: string | null = null;
@@ -71,11 +73,14 @@ export default async function OverviewPage() {
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {yacht ? `How healthy is ${yacht.name}'s indoor environment?` : "How healthy is the yacht's indoor environment?"}
-        </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Overview</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {yacht ? `How healthy is ${yacht.name}'s indoor environment?` : "How healthy is the yacht's indoor environment?"}
+          </p>
+        </div>
+        {yacht && canSync && <AircareSyncButton yachtId={yacht.id} />}
       </div>
 
       {!hasYachts && (

@@ -7,7 +7,7 @@ import { syncAircareData, type AircareSyncSummary } from "@/lib/aircare/sync";
 export async function syncAircareNow(yachtId: string): Promise<AircareSyncSummary> {
   const user = await getCurrentUser();
   if (!user) throw new Error("Not authenticated.");
-  if (user.role !== "admin" && user.role !== "technical") {
+  if (user.role !== "admin" && user.role !== "technical" && user.role !== "captain") {
     throw new Error("You do not have permission to sync data.");
   }
 

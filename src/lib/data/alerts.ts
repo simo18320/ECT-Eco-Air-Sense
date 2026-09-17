@@ -31,14 +31,23 @@ export async function getYachtHealthSummary(yachtId: string): Promise<YachtHealt
 
   if (activePointIds.length > 0) {
     const since = new Date(Date.now() - FRESHNESS_WINDOW_MS).toISOString();
-    const { data: recent } = await supabase
-      .from("measurements")
-      .select("monitoring_point_id")
-      .in("monitoring_point_id", activePointIds)
-      .gte("timestamp", since)
-      .limit(5000);
-
-    sensorsOnline = new Set((recent ?? []).map((r) => r.monitoring_point_id)).size;
+    // Checked per point (limit 1, existence only) rather than one unordered
+    // batch across every point — a point with disproportionately more
+    // readings in the freshness window can (and did, on real data) fill the
+    // entire batch by itself, crowding out points that also have recent
+    // data and making them wrongly count as offline.
+    const results = await Promise.all(
+      activePointIds.map(async (pointId) => {
+        const { data } = await supabase
+          .from("measurements")
+          .select("monitoring_point_id")
+          .eq("monitoring_point_id", pointId)
+          .gte("timestamp", since)
+          .limit(1);
+        return data != null && data.length > 0;
+      }),
+    );
+    sensorsOnline = results.filter(Boolean).length;
   }
 
   const sensorsOffline = activePointIds.length - sensorsOnline;
