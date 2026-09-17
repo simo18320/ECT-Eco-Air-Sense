@@ -4,9 +4,11 @@ import { evaluateAlertsForYacht } from "@/lib/alerts/evaluate";
 import type { TablesInsert } from "@/types/database";
 
 /**
- * AirCare resource -> our parameter names. Sound/Light/Battery/Check_Dati
- * aren't part of the current scoring model, so readings for them are
- * skipped rather than stored unused.
+ * AirCare resource -> our parameter names. Battery is stored (device-health
+ * signal, not an environmental parameter — intentionally left out of
+ * PARAMETER_META so it doesn't appear as a scored/charted parameter).
+ * Sound/Light/Check_Dati still aren't part of the current scoring model, so
+ * readings for them are skipped rather than stored unused.
  */
 const RESOURCE_TO_PARAMETER: Record<string, string> = {
   Temperature: "temperature",
@@ -15,7 +17,13 @@ const RESOURCE_TO_PARAMETER: Record<string, string> = {
   VOC: "tvoc",
   PM25: "pm2_5",
   PM10: "pm10",
+  Battery: "battery",
 };
+
+// Expected-but-unscored resources: skipping them is normal, not a data
+// quality problem, so they're excluded from the skipped/rejected count.
+// Anything else unmapped (a genuinely new/unexpected resource) still counts.
+const KNOWN_UNSCORED_RESOURCES = new Set(["Light", "Sound", "Check_Dati"]);
 
 export type AircareSyncSummary = {
   jobId: string;
@@ -89,7 +97,7 @@ export async function syncAircareData(
     for (const reading of readings) {
       const parameter = RESOURCE_TO_PARAMETER[reading.resource];
       if (!parameter) {
-        skipped++;
+        if (!KNOWN_UNSCORED_RESOURCES.has(reading.resource)) skipped++;
         continue;
       }
       // severity "UNKNOWN" means the sensor didn't report (e.g. comms error) —
