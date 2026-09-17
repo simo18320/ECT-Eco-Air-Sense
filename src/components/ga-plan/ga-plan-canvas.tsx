@@ -298,6 +298,20 @@ function PinDetailCard({
       ) : (
         <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 mt-3">
           {readings.map((r) => {
+            if (r.parameter === "battery") {
+              // AirCare reports this as a raw status code (unit "Status"), not a
+              // charge percentage — see latest-readings-grid.tsx for the same
+              // treatment and why.
+              const isOk = r.value === 0;
+              return (
+                <div key={r.parameter} className="text-center">
+                  <div className="text-xs text-muted-foreground">Battery</div>
+                  <div className={cn("text-sm font-semibold", isOk ? TONE_TEXT.good : TONE_TEXT.warning)}>
+                    {isOk ? "OK" : `Alert (${r.value})`}
+                  </div>
+                </div>
+              );
+            }
             const meta = parameterMeta(r.parameter);
             const threshold = thresholdByParameter.get(r.parameter);
             const tone = threshold ? scoreBand(parameterScore(r.value, threshold)).tone : null;
