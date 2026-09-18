@@ -5,7 +5,7 @@ import { getMonitoringPoints, getLatestReadingsByYacht } from "@/lib/data/monito
 import { getImportHistory } from "@/lib/data/imports";
 import { getCurrentUser } from "@/lib/data/current-user";
 import { getSensorHealth } from "@/lib/data/sensor-health";
-import { computeBaselinesForPoints } from "@/lib/baselines/compute";
+import { getEffectiveThresholds } from "@/lib/data/thresholds";
 import { ImportDialog } from "@/components/import/import-dialog";
 import { AircareSyncButton } from "@/components/import/aircare-sync-button";
 import { ImportHistoryTable } from "@/components/import/import-history-table";
@@ -39,13 +39,13 @@ export default async function LivePage() {
   }
 
   const canImport = user?.role === "admin" || user?.role === "technical";
-  const [points, readings, importJobs, sensorHealth] = await Promise.all([
+  const [points, readings, importJobs, sensorHealth, thresholds] = await Promise.all([
     getMonitoringPoints(yacht.id),
     getLatestReadingsByYacht(yacht.id),
     getImportHistory(yacht.id),
     getSensorHealth(yacht.id),
+    getEffectiveThresholds(yacht.id),
   ]);
-  const baselines = await computeBaselinesForPoints(points.map((p) => p.id));
 
   return (
     <div className="p-6 max-w-6xl mx-auto space-y-6">
@@ -62,7 +62,7 @@ export default async function LivePage() {
         </div>
       </div>
 
-      <LatestReadingsGrid points={points} readings={readings} baselines={baselines} />
+      <LatestReadingsGrid points={points} readings={readings} thresholds={thresholds} />
 
       <SensorHealthCard points={sensorHealth} />
 

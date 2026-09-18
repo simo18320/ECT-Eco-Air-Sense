@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { LatestReading } from "@/lib/data/monitoring-points";
-import type { PointBaseline } from "@/lib/baselines/compute";
+import { parameterScore, scoreBand, type ThresholdLike } from "@/lib/scoring/parameter-score";
 import type { Tables } from "@/types/database";
 
 const PARAM_ORDER = ["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10", "battery"];
@@ -15,20 +15,38 @@ const PARAM_LABELS: Record<string, string> = {
   battery: "Battery",
 };
 
+const TONE_TEXT = {
+  good: "text-status-good",
+  warning: "text-status-warning",
+  critical: "text-status-critical",
+} as const;
+
 function formatValue(parameter: string, value: number) {
   const decimals = parameter === "co2" || parameter === "tvoc" || parameter.startsWith("pm") ? 0 : 1;
   return value.toFixed(decimals);
 }
 
+/** Configured preferred band, shown as "Limit ..." — sourced from the same
+ * ASHRAE/WHO/EPA/WELL-based thresholds the alert engine and scoring use,
+ * not a statistical average of past readings. */
+function limitText(parameter: string, t: ThresholdLike | undefined) {
+  if (!t || t.preferred_max == null) return null;
+  if (t.preferred_min != null) {
+    return `Limit ${formatValue(parameter, t.preferred_min)}–${formatValue(parameter, t.preferred_max)}`;
+  }
+  return `Limit <${formatValue(parameter, t.preferred_max)}`;
+}
+
 export function LatestReadingsGrid({
   points,
   readings,
-  baselines,
+  thresholds,
 }: {
   points: Tables<"monitoring_points">[];
   readings: LatestReading[];
-  baselines?: Map<string, PointBaseline>;
+  thresholds: (ThresholdLike & { parameter: string })[];
 }) {
+  const thresholdByParameter = new Map<string, ThresholdLike>(thresholds.map((t) => [t.parameter, t]));
   if (points.length === 0) {
     return (
       <p className="text-sm text-muted-foreground py-6 text-center">
@@ -95,27 +113,23 @@ export function LatestReadingsGrid({
                           </div>
                         );
                       }
-                      const baseline = baselines?.get(`${point.id}:${r.parameter}`);
-                      const range = baseline?.overallRange ?? null;
-                      const outsideBaseline = range != null && (r.value < range[0] || r.value > range[1]);
+                      const threshold = thresholdByParameter.get(r.parameter);
+                      const tone = threshold ? scoreBand(parameterScore(r.value, threshold)).tone : null;
+                      const limit = limitText(r.parameter, threshold);
                       return (
                         <div key={r.parameter} className="text-center">
                           <div className="text-xs text-muted-foreground">
                             {PARAM_LABELS[r.parameter] ?? r.parameter}
                           </div>
                           <div
-                            className={`text-sm font-semibold tabular-nums ${outsideBaseline ? "text-status-warning" : ""}`}
+                            className={`text-sm font-semibold tabular-nums ${tone ? TONE_TEXT[tone] : ""}`}
                           >
                             {formatValue(r.parameter, r.value)}
                             <span className="text-xs font-normal text-muted-foreground ml-0.5">
                               {r.unit}
                             </span>
                           </div>
-                          {range && (
-                            <div className="text-[10px] text-muted-foreground">
-                              Normal {formatValue(r.parameter, range[0])}–{formatValue(r.parameter, range[1])}
-                            </div>
-                          )}
+                          {limit && <div className="text-[10px] text-muted-foreground">{limit}</div>}
                         </div>
                       );
                     })}
