@@ -2,31 +2,45 @@ import { createClient } from "@/lib/supabase/server";
 import { parameterMeta } from "@/lib/parameters";
 import { rangeFromValues } from "@/lib/baselines/compute";
 import { getYachtScores } from "@/lib/data/scoring";
+import { getEffectiveThresholds } from "@/lib/data/thresholds";
+import { comparePeriods, hourlyAnomalies, robustTrend, thresholdExposure, type Reading } from "./features";
 import type {
   YachtDataSummary,
   PointSummary,
   ParameterTrend,
   CrossPointComparison,
   OpenAlertSummary,
+  ThresholdInfo,
 } from "./types";
 
 const PARAMETERS = ["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10"];
 
-function trendFor(readings: { timestamp: string; value: number }[]): {
-  direction: "increasing" | "decreasing" | "stable";
-  changePct: number | null;
-} {
-  if (readings.length < 4) return { direction: "stable", changePct: null };
-  const sorted = [...readings].sort((a, b) => a.timestamp.localeCompare(b.timestamp));
-  const mid = Math.floor(sorted.length / 2);
-  const firstHalf = sorted.slice(0, mid);
-  const secondHalf = sorted.slice(mid);
-  const firstAvg = firstHalf.reduce((s, r) => s + r.value, 0) / firstHalf.length;
-  const secondAvg = secondHalf.reduce((s, r) => s + r.value, 0) / secondHalf.length;
-  if (firstAvg === 0) return { direction: "stable", changePct: null };
-  const changePct = ((secondAvg - firstAvg) / Math.abs(firstAvg)) * 100;
-  if (Math.abs(changePct) < 5) return { direction: "stable", changePct: Math.round(changePct * 10) / 10 };
-  return { direction: changePct > 0 ? "increasing" : "decreasing", changePct: Math.round(changePct * 10) / 10 };
+/** Rows per request — the API can cap a single response, so long series are read page by page. */
+const PAGE_SIZE = 1000;
+
+async function fetchSeries(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  pointId: string,
+  parameter: string,
+  fromIso: string,
+  toIso: string,
+): Promise<Reading[]> {
+  const readings: Reading[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data } = await supabase
+      .from("measurements")
+      .select("value, timestamp")
+      .eq("monitoring_point_id", pointId)
+      .eq("parameter", parameter)
+      .gte("timestamp", fromIso)
+      .lte("timestamp", toIso)
+      .order("timestamp", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
+    if (!data || data.length === 0) break;
+    for (const r of data) readings.push({ timestamp: r.timestamp, value: r.value });
+    if (data.length < PAGE_SIZE) break;
+  }
+  return readings;
 }
 
 function dayNightSplit(readings: { timestamp: string; value: number }[]): { dayAvg: number | null; nightAvg: number | null } {
@@ -57,6 +71,20 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
 
   const periodEnd = new Date();
   const periodStart = new Date(periodEnd.getTime() - periodDays * 24 * 60 * 60 * 1000);
+  // The period before this one — for the period-over-period comparison and as
+  // extra history to learn each point's usual hour-of-day pattern from.
+  const previousStart = new Date(periodStart.getTime() - periodDays * 24 * 60 * 60 * 1000);
+
+  const thresholdByParameter = new Map<string, ThresholdInfo>();
+  for (const t of await getEffectiveThresholds(yachtId)) {
+    thresholdByParameter.set(t.parameter, {
+      preferredMin: t.preferred_min,
+      preferredMax: t.preferred_max,
+      warning: t.warning_threshold,
+      critical: t.critical_threshold,
+      source: t.source_reference,
+    });
+  }
 
   const { data: openAlertsRaw } = await supabase
     .from("alerts")
@@ -80,39 +108,33 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
   const paramPointAverages: Record<string, { pointName: string; avg: number }[]> = {};
 
   for (const point of points ?? []) {
-    // Fetched per parameter (ordered, individually capped) rather than one
-    // unordered batch for the whole point — a busy point can log tens of
-    // thousands of rows over the period, and an unordered `.limit()` can
-    // return a slice dominated by one or two parameters, silently starving
-    // the AI engine of data for the rest (proven on real data: a point with
-    // ~2500 rows/parameter over 14 days returned only 2 of its 6 parameters
-    // under the old single-query approach).
-    const byParam = new Map<string, { timestamp: string; value: number }[]>();
+    // Fetched per parameter (ordered) rather than one unordered batch for the
+    // whole point — a busy point can log tens of thousands of rows, and an
+    // unordered `.limit()` can return a slice dominated by one or two
+    // parameters, silently starving the AI engine of data for the rest
+    // (proven on real data: a point with ~2500 rows/parameter over 14 days
+    // returned only 2 of its 6 parameters under the old single-query approach).
+    const byParam = new Map<string, { current: Reading[]; previous: Reading[] }>();
     await Promise.all(
       PARAMETERS.map(async (parameter) => {
-        const { data: rows } = await supabase
-          .from("measurements")
-          .select("value, timestamp")
-          .eq("monitoring_point_id", point.id)
-          .eq("parameter", parameter)
-          .gte("timestamp", periodStart.toISOString())
-          .lte("timestamp", periodEnd.toISOString())
-          .order("timestamp", { ascending: true })
-          .limit(5000);
-        if (rows && rows.length > 0) {
-          byParam.set(parameter, rows.map((r) => ({ timestamp: r.timestamp, value: r.value })));
+        const all = await fetchSeries(supabase, point.id, parameter, previousStart.toISOString(), periodEnd.toISOString());
+        const startMs = periodStart.getTime();
+        const current = all.filter((r) => Date.parse(r.timestamp) >= startMs);
+        if (current.length > 0) {
+          byParam.set(parameter, { current, previous: all.filter((r) => Date.parse(r.timestamp) < startMs) });
         }
       }),
     );
 
     const parameters: ParameterTrend[] = [];
-    for (const [parameter, readings] of byParam) {
-      if (readings.length === 0) continue;
+    for (const [parameter, { current: readings, previous }] of byParam) {
       const values = readings.map((r) => r.value);
       const avg = Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10;
-      const { direction, changePct } = trendFor(readings);
+      const trend = robustTrend(readings);
       const { dayAvg, nightAvg } = dayNightSplit(readings);
       const pointAlerts = openAlerts.filter((a) => a.pointName === point.name && a.parameter === parameter);
+      const thresholds = thresholdByParameter.get(parameter) ?? null;
+      const anomalies = hourlyAnomalies(readings, [...previous, ...readings]);
 
       parameters.push({
         parameter,
@@ -121,11 +143,18 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
         avg,
         min: Math.round(Math.min(...values) * 10) / 10,
         max: Math.round(Math.max(...values) * 10) / 10,
-        trendDirection: direction,
-        trendChangePct: changePct,
+        trendDirection: trend.direction,
+        trendChangePct: trend.changePct,
+        trendSignificant: trend.significant,
+        trendDaysUsed: trend.daysUsed,
         dayAvg,
         nightAvg,
         baselineRange: rangeFromValues(values),
+        thresholds,
+        thresholdExposure: thresholds ? thresholdExposure(readings, thresholds) : null,
+        previousPeriod: comparePeriods(readings, previous),
+        anomalyEpisodeCount: anomalies.episodeCount,
+        strongestAnomaly: anomalies.strongest,
         openAlertCount: pointAlerts.length,
         openCriticalAlertCount: pointAlerts.filter((a) => a.severity === "critical").length,
       });

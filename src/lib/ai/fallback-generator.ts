@@ -52,7 +52,13 @@ export function generateFallbackInsights(summary: YachtDataSummary): InsightsOut
   const trendCandidates = summary.points
     .flatMap((p) =>
       p.parameters
-        .filter((param) => param.trendChangePct != null && Math.abs(param.trendChangePct) >= 15)
+        .filter(
+          (param) =>
+            param.trendSignificant &&
+            param.trendDirection !== "stable" &&
+            param.trendChangePct != null &&
+            Math.abs(param.trendChangePct) >= 15,
+        )
         .map((param) => ({ point: p, param })),
     )
     .filter(({ point, param }) => !alertsByPointParam.has(`${point.pointName}:${param.parameter}`))
@@ -64,7 +70,7 @@ export function generateFallbackInsights(summary: YachtDataSummary): InsightsOut
       insightType: "trend",
       monitoringPointName: point.pointName,
       parameter: param.parameter,
-      fact: `${meta.label} in ${point.pointName} ${param.trendDirection === "increasing" ? "increased" : "decreased"} by ${Math.abs(param.trendChangePct!)}% comparing the first half to the second half of the last ${summary.periodDays} days (average ${param.avg} ${meta.unit}).`,
+      fact: `${meta.label} in ${point.pointName} ${param.trendDirection === "increasing" ? "increased" : "decreased"} by an estimated ${Math.abs(param.trendChangePct!)}% over the last ${summary.periodDays} days (statistically significant trend on daily medians; average ${param.avg} ${meta.unit}).`,
       interpretation: `A change of this size across the period suggests a developing pattern rather than day-to-day noise, though the underlying cause cannot be determined from sensor data alone.`,
       recommendation: `Monitor ${point.pointName} closely over the coming days; if the trend continues, ${RECOMMENDED_ACTION[param.parameter]?.toLowerCase() ?? "investigate further"}`,
       confidenceLevel: "medium",

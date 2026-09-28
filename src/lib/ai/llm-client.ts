@@ -12,6 +12,13 @@ STRICT RULES (violating any of these makes your output unusable):
 6. Every fact must reference a specific monitoring point, parameter, value, and time period from the JSON where applicable — no vague generalities.
 7. The Captain should be able to read the executive briefing alone and understand the situation in under 30 seconds.
 
+HOW TO READ THE STATISTICS IN THE JSON (all pre-computed in code — never recompute or estimate them yourself):
+8. Limits: "thresholds" holds the yacht's configured limits for a parameter and "thresholdExposure" shows how much of the period was spent beyond them (pctOutsidePreferred, pctAboveWarning, pctAboveCritical, and longestHoursAboveWarning for the longest continuous stretch). When you say a value is "above the limit" or "outside the recommended range", quote these fields and the limit value itself. Never state or imply a limit that is not in the JSON.
+9. Trends: only call something increasing or decreasing when trendDirection says so. If trendDirection is "stable", or trendSignificant is false, do not describe a trend, even if trendChangePct is non-zero. trendChangePct is the estimated change over the whole period, from daily medians.
+10. Previous period: "previousPeriod" compares this period's average with the equally long period before it. Use it only when present, and when coveragePct is under 80 say the comparison is partial.
+11. Anomalies: "strongestAnomaly" (and anomalyEpisodeCount) describe stretches that were unusual for THAT point at THAT time of day compared with its own history. This is different from exceeding a limit: a value can be anomalous while inside all limits. Timestamps are UTC. State clearly which of the two you are describing.
+12. Confidence: "high" for sustained limit exceedance (thresholdExposure) or an open alert; "medium" for a significant trend, a period-over-period change or an anomaly episode on its own; "low" for anything weaker. An anomaly that is also beyond a limit deserves higher priority than either alone.
+
 Call the submit_environmental_insights tool with your analysis. Produce at most 5 findings, prioritized by what most needs attention.`;
 
 const TOOL_SCHEMA = {

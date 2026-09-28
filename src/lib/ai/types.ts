@@ -29,6 +29,43 @@ export type InsightsOutput = {
 
 // ---- Grounded data summary: the ONLY facts either engine is allowed to reason over ----
 
+/** The yacht's configured limits for a parameter (ASHRAE / WHO / EPA / WELL based unless overridden). */
+export type ThresholdInfo = {
+  preferredMin: number | null;
+  preferredMax: number | null;
+  warning: number | null;
+  critical: number | null;
+  source: string | null;
+};
+
+export type ThresholdExposure = {
+  /** % of readings below preferredMin or above preferredMax. */
+  pctOutsidePreferred: number;
+  pctAboveWarning: number;
+  pctAboveCritical: number;
+  /** Longest continuous stretch above the warning limit; null when it was never exceeded. */
+  longestHoursAboveWarning: number | null;
+};
+
+export type PreviousPeriodComparison = {
+  /** Average over the period of the same length immediately before this one. */
+  avg: number;
+  changePct: number | null;
+  /** How much data the previous period has relative to this one — under ~80% the comparison is only partial. */
+  coveragePct: number;
+};
+
+/** A sustained stretch that is unusual for this point at that hour of day — not a limit exceedance. */
+export type AnomalyEpisode = {
+  start: string;
+  end: string;
+  readings: number;
+  direction: "above" | "below";
+  peakValue: number;
+  typicalValueForThatHour: number;
+  peakZScore: number;
+};
+
 export type ParameterTrend = {
   parameter: string;
   unit: string;
@@ -36,12 +73,21 @@ export type ParameterTrend = {
   avg: number;
   min: number;
   max: number;
+  /** Direction is "stable" unless the trend is statistically significant and at least 5%. */
   trendDirection: "increasing" | "decreasing" | "stable";
+  /** Estimated change over the period (Theil-Sen on daily medians), % of the typical level. */
   trendChangePct: number | null;
+  trendSignificant: boolean;
+  trendDaysUsed: number;
   dayAvg: number | null;
   nightAvg: number | null;
   /** p10-p90 range over the analysis period — "normal for this specific point," not a configured threshold. */
   baselineRange: [number, number] | null;
+  thresholds: ThresholdInfo | null;
+  thresholdExposure: ThresholdExposure | null;
+  previousPeriod: PreviousPeriodComparison | null;
+  anomalyEpisodeCount: number;
+  strongestAnomaly: AnomalyEpisode | null;
   openAlertCount: number;
   openCriticalAlertCount: number;
 };
