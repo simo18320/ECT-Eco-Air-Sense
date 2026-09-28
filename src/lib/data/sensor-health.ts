@@ -31,23 +31,22 @@ export async function getSensorHealth(yachtId: string): Promise<PointHealth[]> {
   const activePoints = points ?? [];
   if (activePoints.length === 0) return [];
 
-  const pointIds = activePoints.map((p) => p.id);
-  // Most-recent-first, deduped to one row per point below. Same "top N rows,
-  // not a true per-point latest" trade-off as getLatestReadingsByYacht — fine
-  // at current data volumes, revisit with a DISTINCT ON/RPC if it stops being.
-  const { data: measurements } = await supabase
-    .from("measurements")
-    .select("monitoring_point_id, timestamp")
-    .in("monitoring_point_id", pointIds)
-    .order("timestamp", { ascending: false })
-    .limit(5000);
-
+  // The newest reading of each point, asked for point by point. One combined
+  // "newest N rows" query is capped at 1000 rows by the API — about the last
+  // hour or two — so a sensor that was quiet for longer would look offline
+  // even though the stale/offline limits here are 30 hours and 7 days.
   const lastReadingByPoint = new Map<string, string>();
-  for (const m of measurements ?? []) {
-    if (!lastReadingByPoint.has(m.monitoring_point_id)) {
-      lastReadingByPoint.set(m.monitoring_point_id, m.timestamp);
-    }
-  }
+  await Promise.all(
+    activePoints.map(async (p) => {
+      const { data } = await supabase
+        .from("measurements")
+        .select("timestamp")
+        .eq("monitoring_point_id", p.id)
+        .order("timestamp", { ascending: false })
+        .limit(1);
+      if (data && data.length > 0) lastReadingByPoint.set(p.id, data[0].timestamp);
+    }),
+  );
 
   const now = Date.now();
   return activePoints.map((p) => {

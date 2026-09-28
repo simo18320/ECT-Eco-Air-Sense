@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { PARAMETER_META, type Reading } from "@/lib/parameters";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 
 export * from "@/lib/parameters";
 
@@ -37,15 +38,17 @@ export async function getReadings(
   end: Date,
 ): Promise<Reading[]> {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("measurements")
-    .select("timestamp, value")
-    .eq("monitoring_point_id", pointId)
-    .eq("parameter", parameter)
-    .gte("timestamp", start.toISOString())
-    .lte("timestamp", end.toISOString())
-    .order("timestamp", { ascending: true })
-    .limit(10000);
-
-  return data ?? [];
+  return fetchAllRows(
+    (from, to) =>
+      supabase
+        .from("measurements")
+        .select("timestamp, value")
+        .eq("monitoring_point_id", pointId)
+        .eq("parameter", parameter)
+        .gte("timestamp", start.toISOString())
+        .lte("timestamp", end.toISOString())
+        .order("timestamp", { ascending: true })
+        .range(from, to),
+    10000,
+  );
 }

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import { getEffectiveThresholds } from "@/lib/data/thresholds";
 import { getScoringWeights, type ScoringWeightsBundle } from "@/lib/data/scoring-config";
 import { computeComfortIndex } from "@/lib/scoring/comfort";
@@ -41,14 +42,19 @@ async function getCurrentReadingsForPoint(pointId: string): Promise<CurrentReadi
 async function getRecentSeries(pointId: string, parameter: string, days = 7): Promise<number[]> {
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-  const { data } = await supabase
-    .from("measurements")
-    .select("value")
-    .eq("monitoring_point_id", pointId)
-    .eq("parameter", parameter)
-    .gte("timestamp", since)
-    .limit(2000);
-  return (data ?? []).map((r) => r.value);
+  const rows = await fetchAllRows(
+    (from, to) =>
+      supabase
+        .from("measurements")
+        .select("value")
+        .eq("monitoring_point_id", pointId)
+        .eq("parameter", parameter)
+        .gte("timestamp", since)
+        .order("timestamp", { ascending: true })
+        .range(from, to),
+    2000,
+  );
+  return rows.map((r) => r.value);
 }
 
 export async function getPointScores(

@@ -3,6 +3,7 @@ import { parameterMeta } from "@/lib/parameters";
 import { rangeFromValues } from "@/lib/baselines/compute";
 import { getYachtScores } from "@/lib/data/scoring";
 import { getEffectiveThresholds } from "@/lib/data/thresholds";
+import { fetchAllRows } from "@/lib/supabase/paginate";
 import { comparePeriods, hourlyAnomalies, robustTrend, thresholdExposure, type Reading } from "./features";
 import type {
   YachtDataSummary,
@@ -15,9 +16,6 @@ import type {
 
 const PARAMETERS = ["temperature", "relative_humidity", "co2", "tvoc", "pm2_5", "pm10"];
 
-/** Rows per request — the API can cap a single response, so long series are read page by page. */
-const PAGE_SIZE = 1000;
-
 async function fetchSeries(
   supabase: Awaited<ReturnType<typeof createClient>>,
   pointId: string,
@@ -25,9 +23,8 @@ async function fetchSeries(
   fromIso: string,
   toIso: string,
 ): Promise<Reading[]> {
-  const readings: Reading[] = [];
-  for (let from = 0; ; from += PAGE_SIZE) {
-    const { data } = await supabase
+  return fetchAllRows((from, to) =>
+    supabase
       .from("measurements")
       .select("value, timestamp")
       .eq("monitoring_point_id", pointId)
@@ -35,12 +32,8 @@ async function fetchSeries(
       .gte("timestamp", fromIso)
       .lte("timestamp", toIso)
       .order("timestamp", { ascending: true })
-      .range(from, from + PAGE_SIZE - 1);
-    if (!data || data.length === 0) break;
-    for (const r of data) readings.push({ timestamp: r.timestamp, value: r.value });
-    if (data.length < PAGE_SIZE) break;
-  }
-  return readings;
+      .range(from, to),
+  );
 }
 
 function dayNightSplit(readings: { timestamp: string; value: number }[]): { dayAvg: number | null; nightAvg: number | null } {

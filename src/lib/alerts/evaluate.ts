@@ -111,16 +111,21 @@ export async function evaluateAlertsForYacht(
 
   for (const pointId of pointIds) {
     for (const [parameter, threshold] of thresholdByParam) {
-      const { data: readings } = await supabase
+      // The NEWEST readings, put back in time order for the streak walk. This
+      // used to take the oldest 500 of the 14-day window (ascending + limit),
+      // so every alert was judged on the state of about 12 days ago. 1000 is
+      // the most one request returns.
+      const { data: newestFirst } = await supabase
         .from("measurements")
         .select("timestamp, value")
         .eq("monitoring_point_id", pointId)
         .eq("parameter", parameter)
         .gte("timestamp", since)
-        .order("timestamp", { ascending: true })
-        .limit(500);
+        .order("timestamp", { ascending: false })
+        .limit(1000);
+      const readings = [...(newestFirst ?? [])].reverse();
 
-      const streak = findPersistentStreak(readings ?? [], threshold);
+      const streak = findPersistentStreak(readings, threshold);
 
       const { data: existingAlert } = await supabase
         .from("alerts")
