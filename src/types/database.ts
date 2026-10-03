@@ -610,6 +610,7 @@ export type Database = {
           id: string
           name: string
           room_location: string | null
+          silence_notified_at: string | null
           status: Database["public"]["Enums"]["monitoring_point_status"]
           updated_at: string
           yacht_id: string
@@ -622,6 +623,7 @@ export type Database = {
           id?: string
           name: string
           room_location?: string | null
+          silence_notified_at?: string | null
           status?: Database["public"]["Enums"]["monitoring_point_status"]
           updated_at?: string
           yacht_id: string
@@ -634,6 +636,7 @@ export type Database = {
           id?: string
           name?: string
           room_location?: string | null
+          silence_notified_at?: string | null
           status?: Database["public"]["Enums"]["monitoring_point_status"]
           updated_at?: string
           yacht_id?: string

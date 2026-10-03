@@ -1,6 +1,7 @@
 import { createAdminClient } from "@/lib/supabase/admin";
 import { aircareLogin, aircareGetLastData } from "@/lib/aircare/client";
 import { evaluateAlertsForYacht } from "@/lib/alerts/evaluate";
+import { notifyNewlySilentSensors } from "@/lib/sensors/notify-silence";
 import type { TablesInsert } from "@/types/database";
 
 /**
@@ -168,6 +169,7 @@ export async function syncAircareData(
       .eq("id", job.id);
 
     await evaluateAlertsForYacht(supabase, yachtId);
+    await notifyNewlySilentSensors(supabase, yachtId);
 
     return {
       jobId: job.id,

@@ -16,6 +16,8 @@ import { ExecutiveBriefingCard } from "@/components/ai-insights/executive-briefi
 import { GenerateInsightsButton } from "@/components/ai-insights/generate-button";
 import { getLatestExecutiveBriefing } from "@/lib/data/ai-insights";
 import { AircareSyncButton } from "@/components/import/aircare-sync-button";
+import { SilentSensorsAlert } from "@/components/sensors/silent-sensors-alert";
+import { getSilenceSummary, type SilenceSummary } from "@/lib/sensors/silence";
 
 export default async function OverviewPage() {
   const user = await getCurrentUser();
@@ -32,10 +34,11 @@ export default async function OverviewPage() {
   let openAlerts: Awaited<ReturnType<typeof getOpenAlerts>> = [];
   let scores = null as Awaited<ReturnType<typeof getYachtScores>> | null;
   let briefing = null as Awaited<ReturnType<typeof getLatestExecutiveBriefing>> | null;
+  let silence: SilenceSummary | null = null;
 
   if (yacht) {
     const supabase = await createClient();
-    const [summary, alerts, { data: lastJob }, yachtScores, latestBriefing] = await Promise.all([
+    const [summary, alerts, { data: lastJob }, yachtScores, latestBriefing, silenceSummary] = await Promise.all([
       getYachtHealthSummary(yacht.id),
       getOpenAlerts(yacht.id),
       supabase
@@ -47,7 +50,9 @@ export default async function OverviewPage() {
         .maybeSingle(),
       getYachtScores(yacht.id),
       getLatestExecutiveBriefing(yacht.id),
+      getSilenceSummary(supabase, yacht.id),
     ]);
+    silence = silenceSummary;
     health = summary;
     openAlerts = alerts;
     pointCount = summary.sensorsOnline + summary.sensorsOffline;
@@ -82,6 +87,8 @@ export default async function OverviewPage() {
         </div>
         {yacht && canSync && <AircareSyncButton yachtId={yacht.id} />}
       </div>
+
+      {silence && <SilentSensorsAlert summary={silence} />}
 
       {!hasYachts && (
         <Alert>
