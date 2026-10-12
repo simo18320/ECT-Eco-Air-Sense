@@ -152,9 +152,14 @@ export function generateFallbackInsights(summary: YachtDataSummary): InsightsOut
   }
 
   const topPriorityFinding = findings.find((f) => f.priority === "high") ?? findings[0];
+  const coveragePct = summary.dataCoverage.coveragePct;
+  const coverageNote =
+    summary.points.length > 0 && coveragePct < 90
+      ? ` Sensors reported during only ${Math.round(coveragePct)}% of the last ${summary.periodDays} days, so these results describe the hours with data.`
+      : "";
   const overallStatus =
     summary.overallScore != null
-      ? `Overall Environmental Score is ${summary.overallScore}/100 (${scoreBand(summary.overallScore)}) across ${summary.points.length} monitoring point${summary.points.length === 1 ? "" : "s"}.`
+      ? `Overall Environmental Score is ${summary.overallScore}/100 (${scoreBand(summary.overallScore)}) across ${summary.points.length} monitoring point${summary.points.length === 1 ? "" : "s"}.${coverageNote}`
       : "No monitoring data available yet for this period.";
 
   const criticalAlerts = summary.openAlerts.filter((a) => a.severity === "critical");

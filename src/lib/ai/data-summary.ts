@@ -4,7 +4,17 @@ import { rangeFromValues } from "@/lib/baselines/compute";
 import { getYachtScores } from "@/lib/data/scoring";
 import { getEffectiveThresholds } from "@/lib/data/thresholds";
 import { fetchAllRows } from "@/lib/supabase/paginate";
-import { comparePeriods, hourlyAnomalies, robustTrend, thresholdExposure, type Reading } from "./features";
+import { getLastFeedSync } from "@/lib/sensors/silence";
+import {
+  comparePeriods,
+  coverageOf,
+  coveredHours,
+  hoursWithDataSince,
+  hourlyAnomalies,
+  robustTrend,
+  thresholdExposure,
+  type Reading,
+} from "./features";
 import type {
   YachtDataSummary,
   PointSummary,
@@ -79,6 +89,11 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
     });
   }
 
+  // Coverage is measured up to the last sync: the feed is only pulled when a
+  // sync runs, so the hours after it say nothing about whether sensors reported.
+  const lastSync = await getLastFeedSync(supabase, yachtId);
+  const coverageEnd = lastSync && lastSync < periodEnd ? lastSync : periodEnd;
+
   const { data: openAlertsRaw } = await supabase
     .from("alerts")
     .select("parameter, severity, current_value, first_detected_at, monitoring_points(name)")
@@ -93,10 +108,14 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
       severity: a.severity,
       currentValue: a.current_value,
       durationHours: Math.round((Date.now() - new Date(a.first_detected_at).getTime()) / (60 * 60 * 1000)),
+      hoursWithData: null,
     };
   });
+  const alertOpenedAt = new Map<OpenAlertSummary, Date>();
+  (openAlertsRaw ?? []).forEach((a, i) => alertOpenedAt.set(openAlerts[i], new Date(a.first_detected_at)));
 
   const pointSummaries: PointSummary[] = [];
+  const yachtHours = new Set<number>();
   // parameter -> point name -> avg (for cross-point comparison)
   const paramPointAverages: Record<string, { pointName: string; avg: number }[]> = {};
 
@@ -128,6 +147,14 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
       const pointAlerts = openAlerts.filter((a) => a.pointName === point.name && a.parameter === parameter);
       const thresholds = thresholdByParameter.get(parameter) ?? null;
       const anomalies = hourlyAnomalies(readings, [...previous, ...readings]);
+      const hours = coveredHours(readings);
+      for (const h of hours) yachtHours.add(h);
+      const coverage = coverageOf(hours, periodStart, coverageEnd);
+      const previousCoverage = coverageOf(coveredHours(previous), previousStart, periodStart);
+      for (const alert of pointAlerts) {
+        const openedAt = alertOpenedAt.get(alert);
+        if (openedAt) alert.hoursWithData = hoursWithDataSince(hours, openedAt > periodStart ? openedAt : periodStart);
+      }
 
       parameters.push({
         parameter,
@@ -140,12 +167,13 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
         trendChangePct: trend.changePct,
         trendSignificant: trend.significant,
         trendDaysUsed: trend.daysUsed,
+        coverage: { coveragePct: coverage.coveragePct, fullDays: coverage.fullDays },
         dayAvg,
         nightAvg,
         baselineRange: rangeFromValues(values),
         thresholds,
         thresholdExposure: thresholds ? thresholdExposure(readings, thresholds) : null,
-        previousPeriod: comparePeriods(readings, previous),
+        previousPeriod: comparePeriods(readings, previous, coverage.coveragePct, previousCoverage.coveragePct),
         anomalyEpisodeCount: anomalies.episodeCount,
         strongestAnomaly: anomalies.strongest,
         openAlertCount: pointAlerts.length,
@@ -189,6 +217,8 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
     periodStart: periodStart.toISOString(),
     periodEnd: periodEnd.toISOString(),
     periodDays,
+    coverageEnd: coverageEnd.toISOString(),
+    dataCoverage: coverageOf(yachtHours, periodStart, coverageEnd),
     pointCount: pointSummaries.length,
     pointsWithoutData: (points ?? [])
       .filter((p) => !pointSummaries.some((s) => s.pointId === p.id))

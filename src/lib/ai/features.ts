@@ -1,5 +1,7 @@
 import type {
   AnomalyEpisode,
+  CoverageGap,
+  DataCoverage,
   PreviousPeriodComparison,
   ThresholdExposure,
   ThresholdInfo,
@@ -19,6 +21,13 @@ const DAY_MS = 24 * HOUR_MS;
 const RUN_GAP_MS = 60 * 60 * 1000;
 const EPISODE_GAP_MS = 30 * 60 * 1000;
 const MIN_TREND_DAYS = 7;
+/** A day counts for trends only if readings exist in at least this many of its 24 hours. */
+const GOOD_DAY_MIN_HOURS = 20;
+const MIN_GAP_HOURS = 6;
+const MAX_REPORTED_GAPS = 3;
+/** Under this share of hours with data, two periods are not comparable. */
+const RELIABLE_COVERAGE_PCT = 60;
+const MIN_HOURS_OF_DAY_FOR_BALANCED_MEAN = 18; // hours of the day two periods must share to be compared
 const ANOMALY_Z = 4;
 const MIN_EPISODE_READINGS = 3;
 const MIN_READINGS_PER_HOUR_PROFILE = 30;
@@ -48,18 +57,22 @@ export type TrendResult = {
  * direction is only reported when the trend is significant AND at least 5%.
  */
 export function robustTrend(readings: Reading[]): TrendResult {
-  const perDay = new Map<number, number[]>();
+  // A day is only usable when it has readings across (almost) the whole day.
+  // A few morning hours are not a day: the median of a fragment depends on
+  // which hours happen to be there, and the day/night cycle would read as a trend.
+  const perDay = new Map<number, { values: number[]; hours: Set<number> }>();
   for (const r of readings) {
-    const day = Math.floor(Date.parse(r.timestamp) / DAY_MS);
-    (perDay.get(day) ?? perDay.set(day, []).get(day)!).push(r.value);
+    const ts = Date.parse(r.timestamp);
+    const day = Math.floor(ts / DAY_MS);
+    const entry = perDay.get(day) ?? perDay.set(day, { values: [], hours: new Set() }).get(day)!;
+    entry.values.push(r.value);
+    entry.hours.add(Math.floor(ts / HOUR_MS));
   }
 
-  // Drop partial days (period boundaries, outages) so they don't skew the median.
-  const typicalCount = median([...perDay.values()].map((v) => v.length));
   const days = [...perDay.entries()]
-    .filter(([, values]) => values.length >= typicalCount * 0.5)
+    .filter(([, entry]) => entry.hours.size >= GOOD_DAY_MIN_HOURS)
     .sort(([a], [b]) => a - b)
-    .map(([day, values]) => ({ day, y: median(values) }));
+    .map(([day, entry]) => ({ day, y: median(entry.values) }));
 
   if (days.length < MIN_TREND_DAYS) {
     return { direction: "stable", changePct: null, significant: false, daysUsed: days.length };
@@ -129,15 +142,112 @@ export function thresholdExposure(readings: Reading[], t: ThresholdInfo): Thresh
   };
 }
 
-/** Average of this period against the one before it, with how much of the previous period actually has data. */
-export function comparePeriods(current: Reading[], previous: Reading[]): PreviousPeriodComparison | null {
+const plainMean = (rs: Reading[]) => rs.reduce((sum, r) => sum + r.value, 0) / rs.length;
+
+function meansByHourOfDay(readings: Reading[]): Map<number, number> {
+  const acc = new Map<number, { sum: number; n: number }>();
+  for (const r of readings) {
+    const hour = new Date(r.timestamp).getUTCHours();
+    const entry = acc.get(hour) ?? acc.set(hour, { sum: 0, n: 0 }).get(hour)!;
+    entry.sum += r.value;
+    entry.n++;
+  }
+  return new Map([...acc].map(([hour, { sum, n }]) => [hour, sum / n]));
+}
+
+/**
+ * This period against the one before it, compared like for like: both
+ * averages are taken only over the hours of the day that have data in BOTH
+ * periods, each hour weighted equally. A plain mean over a period with holes
+ * leans towards whichever hours happen to have data (a morning-only stretch
+ * of a day/night cycle reads warmer than the true average), and a different
+ * set of hours in each period would compare different things.
+ * The change is withheld when either period has data for less than 60% of
+ * its hours, or the two share fewer than 18 hours of the day.
+ */
+export function comparePeriods(
+  current: Reading[],
+  previous: Reading[],
+  currentCoveragePct: number,
+  previousCoveragePct: number,
+): PreviousPeriodComparison | null {
   if (current.length === 0 || previous.length < 20) return null;
-  const avg = (rs: Reading[]) => rs.reduce((sum, r) => sum + r.value, 0) / rs.length;
-  const previousAvg = avg(previous);
+
+  const cur = meansByHourOfDay(current);
+  const prev = meansByHourOfDay(previous);
+  const common = [...cur.keys()].filter((hour) => prev.has(hour));
+  const matched = common.length >= MIN_HOURS_OF_DAY_FOR_BALANCED_MEAN;
+
+  const mean = (values: number[]) => values.reduce((a, b) => a + b, 0) / values.length;
+  const currentAvg = matched ? mean(common.map((h) => cur.get(h)!)) : plainMean(current);
+  const previousAvg = matched ? mean(common.map((h) => prev.get(h)!)) : plainMean(previous);
+  const reliable = matched && currentCoveragePct >= RELIABLE_COVERAGE_PCT && previousCoveragePct >= RELIABLE_COVERAGE_PCT;
+
   return {
-    avg: round1(previousAvg),
-    changePct: previousAvg !== 0 ? round1(((avg(current) - previousAvg) / Math.abs(previousAvg)) * 100) : null,
-    coveragePct: Math.min(100, Math.round((previous.length / current.length) * 100)),
+    currentAvg: round1(currentAvg),
+    previousAvg: round1(previousAvg),
+    changePct: reliable && previousAvg !== 0 ? round1(((currentAvg - previousAvg) / Math.abs(previousAvg)) * 100) : null,
+    currentCoveragePct,
+    previousCoveragePct,
+    reliable,
+  };
+}
+
+export function coveredHours(readings: Reading[]): Set<number> {
+  const hours = new Set<number>();
+  for (const r of readings) hours.add(Math.floor(Date.parse(r.timestamp) / HOUR_MS));
+  return hours;
+}
+
+/** Hours with data since `since` (an UTC hour counts if it has at least one reading). */
+export function hoursWithDataSince(hours: Set<number>, since: Date): number {
+  const firstHour = Math.floor(since.getTime() / HOUR_MS);
+  let count = 0;
+  for (const h of hours) if (h >= firstHour) count++;
+  return count;
+}
+
+/** Which share of the hours in [from, to) have at least one reading, and where the long holes are. */
+export function coverageOf(hours: Set<number>, from: Date, to: Date): DataCoverage {
+  const first = Math.floor(from.getTime() / HOUR_MS);
+  const last = Math.floor((to.getTime() - 1) / HOUR_MS);
+  const totalHours = Math.max(0, last - first + 1);
+
+  let covered = 0;
+  let gapStart = -1;
+  const gaps: CoverageGap[] = [];
+  const hoursPerDay = new Map<number, number>();
+
+  // One step past the end closes a gap that runs up to the end of the range.
+  for (let h = first; h <= last + 1; h++) {
+    const missingInside = h <= last && !hours.has(h);
+    if (missingInside) {
+      if (gapStart < 0) gapStart = h;
+      continue;
+    }
+    if (gapStart >= 0) {
+      if (h - gapStart >= MIN_GAP_HOURS) {
+        gaps.push({
+          start: new Date(gapStart * HOUR_MS).toISOString(),
+          end: new Date(h * HOUR_MS).toISOString(),
+          hours: h - gapStart,
+        });
+      }
+      gapStart = -1;
+    }
+    if (h <= last) {
+      covered++;
+      const day = Math.floor(h / 24);
+      hoursPerDay.set(day, (hoursPerDay.get(day) ?? 0) + 1);
+    }
+  }
+
+  return {
+    coveragePct: totalHours > 0 ? round1((covered / totalHours) * 100) : 0,
+    hoursWithData: covered,
+    totalHours,
+    fullDays: [...hoursPerDay.values()].filter((n) => n >= GOOD_DAY_MIN_HOURS).length,
+    longestGaps: gaps.sort((a, b) => b.hours - a.hours).slice(0, MAX_REPORTED_GAPS),
   };
 }
 

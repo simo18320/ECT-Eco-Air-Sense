@@ -48,12 +48,35 @@ export type ThresholdExposure = {
 };
 
 export type PreviousPeriodComparison = {
-  /** Average over the period of the same length immediately before this one. */
-  avg: number;
+  /** Averages over the hours of the day that have data in both periods, so they are comparable. */
+  currentAvg: number;
+  previousAvg: number;
+  /** Withheld (null) when either period is too incomplete to compare — see `reliable`. */
   changePct: number | null;
-  /** How much data the previous period has relative to this one — under ~80% the comparison is only partial. */
-  coveragePct: number;
+  currentCoveragePct: number;
+  previousCoveragePct: number;
+  /** Both periods have data for at least 60% of their hours. */
+  reliable: boolean;
 };
+
+export type CoverageGap = {
+  start: string;
+  end: string;
+  hours: number;
+};
+
+/** How much of the period the sensors were actually reporting (hours with at least one reading). */
+export type DataCoverage = {
+  coveragePct: number;
+  hoursWithData: number;
+  totalHours: number;
+  /** Days with readings in at least 20 of 24 hours — the only days a trend is built on. */
+  fullDays: number;
+  /** The longest stretches of 6+ hours with no readings. */
+  longestGaps: CoverageGap[];
+};
+
+export type ParameterCoverage = Pick<DataCoverage, "coveragePct" | "fullDays">;
 
 /** A sustained stretch that is unusual for this point at that hour of day — not a limit exceedance. */
 export type AnomalyEpisode = {
@@ -78,7 +101,9 @@ export type ParameterTrend = {
   /** Estimated change over the period (Theil-Sen on daily medians), % of the typical level. */
   trendChangePct: number | null;
   trendSignificant: boolean;
+  /** Full days (20+ hours with readings) the trend rests on; fewer than 7 means no trend is computed. */
   trendDaysUsed: number;
+  coverage: ParameterCoverage;
   dayAvg: number | null;
   nightAvg: number | null;
   /** p10-p90 range over the analysis period — "normal for this specific point," not a configured threshold. */
@@ -112,7 +137,10 @@ export type OpenAlertSummary = {
   parameter: string;
   severity: "info" | "warning" | "critical";
   currentValue: number | null;
+  /** Hours since the alert first opened, gaps in the data included. */
   durationHours: number;
+  /** Hours within that time (inside the analysis period) in which the sensor actually reported. */
+  hoursWithData: number | null;
 };
 
 export type YachtDataSummary = {
@@ -120,6 +148,10 @@ export type YachtDataSummary = {
   periodStart: string;
   periodEnd: string;
   periodDays: number;
+  /** Coverage is measured up to the last AirCare sync: the feed is only pulled when a sync runs. */
+  coverageEnd: string;
+  /** Hours in which at least one sensor on the yacht reported; the gaps are yacht-wide outages. */
+  dataCoverage: DataCoverage;
   /** Number of monitoring points with readings in the period — the only count the AI may quote. */
   pointCount: number;
   /** Active points with no readings in the period (they are absent from `points`). */
