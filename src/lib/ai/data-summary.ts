@@ -189,6 +189,10 @@ export async function buildYachtDataSummary(yachtId: string, periodDays = 14): P
     periodStart: periodStart.toISOString(),
     periodEnd: periodEnd.toISOString(),
     periodDays,
+    pointCount: pointSummaries.length,
+    pointsWithoutData: (points ?? [])
+      .filter((p) => !pointSummaries.some((s) => s.pointId === p.id))
+      .map((p) => p.name),
     points: pointSummaries,
     crossPointComparisons,
     openAlerts,

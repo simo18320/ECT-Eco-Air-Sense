@@ -120,6 +120,10 @@ export type YachtDataSummary = {
   periodStart: string;
   periodEnd: string;
   periodDays: number;
+  /** Number of monitoring points with readings in the period — the only count the AI may quote. */
+  pointCount: number;
+  /** Active points with no readings in the period (they are absent from `points`). */
+  pointsWithoutData: string[];
   points: PointSummary[];
   crossPointComparisons: CrossPointComparison[];
   openAlerts: OpenAlertSummary[];

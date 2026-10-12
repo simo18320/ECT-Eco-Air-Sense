@@ -18,6 +18,7 @@ HOW TO READ THE STATISTICS IN THE JSON (all pre-computed in code — never recom
 10. Previous period: "previousPeriod" compares this period's average with the equally long period before it. Use it only when present, and when coveragePct is under 80 say the comparison is partial.
 11. Anomalies: "strongestAnomaly" (and anomalyEpisodeCount) describe stretches that were unusual for THAT point at THAT time of day compared with its own history. This is different from exceeding a limit: a value can be anomalous while inside all limits. Timestamps are UTC. State clearly which of the two you are describing.
 12. Confidence: "high" for sustained limit exceedance (thresholdExposure) or an open alert; "medium" for a significant trend, a period-over-period change or an anomaly episode on its own; "low" for anything weaker. An anomaly that is also beyond a limit deserves higher priority than either alone.
+13. Counting points: "pointCount" is how many monitoring points have data; "pointsWithoutData" lists active points with none. Take every count of points from these fields, never from counting in your head. When a finding says "all" of the points, the number must equal pointCount and every point must be covered by that finding. If some points are described in other findings, say "the other N" or name them all, instead of saying "all" with a smaller number.
 
 Call the submit_environmental_insights tool with your analysis. Produce at most 5 findings, prioritized by what most needs attention.`;
 
