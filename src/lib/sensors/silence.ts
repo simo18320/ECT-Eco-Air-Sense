@@ -44,6 +44,7 @@ export async function inspectSensors(
   supabase: SupabaseClient<Database>,
   yachtId: string,
   asOf: Date,
+  latestReadingAt?: (pointId: string) => Promise<string | null>,
 ): Promise<SensorSilence[]> {
   const { data: points } = await supabase
     .from("monitoring_points")
@@ -54,20 +55,26 @@ export async function inspectSensors(
 
   const sensors = await Promise.all(
     (points ?? []).map(async (p): Promise<SensorSilence | null> => {
-      const { data } = await supabase
-        .from("measurements")
-        .select("timestamp")
-        .eq("monitoring_point_id", p.id)
-        .order("timestamp", { ascending: false })
-        .limit(1);
-      if (!data || data.length === 0) return null;
+      let lastReadingAt: string | null;
+      if (latestReadingAt) {
+        lastReadingAt = await latestReadingAt(p.id);
+      } else {
+        const { data } = await supabase
+          .from("measurements")
+          .select("timestamp")
+          .eq("monitoring_point_id", p.id)
+          .order("timestamp", { ascending: false })
+          .limit(1);
+        lastReadingAt = data && data.length > 0 ? data[0].timestamp : null;
+      }
+      if (!lastReadingAt) return null;
 
-      const silentHours = Math.max(0, (asOf.getTime() - Date.parse(data[0].timestamp)) / HOUR_MS);
+      const silentHours = Math.max(0, (asOf.getTime() - Date.parse(lastReadingAt)) / HOUR_MS);
       return {
         pointId: p.id,
         pointName: p.name,
         code: p.code,
-        lastReadingAt: data[0].timestamp,
+        lastReadingAt,
         silentHours: Math.round(silentHours * 10) / 10,
         isSilent: silentHours > SILENT_AFTER_HOURS,
         notifiedAt: p.silence_notified_at,
@@ -85,11 +92,12 @@ export async function inspectSensors(
 export async function getSilenceSummary(
   supabase: SupabaseClient<Database>,
   yachtId: string,
+  latestReadingAt?: (pointId: string) => Promise<string | null>,
 ): Promise<SilenceSummary | null> {
   const asOf = await getLastFeedSync(supabase, yachtId);
   if (!asOf) return null;
 
-  const sensors = await inspectSensors(supabase, yachtId, asOf);
+  const sensors = await inspectSensors(supabase, yachtId, asOf, latestReadingAt);
   const silent = sensors.filter((s) => s.isSilent);
   if (silent.length === 0) return null;
 

@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getLatestReadingAt } from "@/lib/data/latest-reading";
 
 export type SensorHealthStatus = "healthy" | "stale" | "offline";
 
@@ -38,13 +39,8 @@ export async function getSensorHealth(yachtId: string): Promise<PointHealth[]> {
   const lastReadingByPoint = new Map<string, string>();
   await Promise.all(
     activePoints.map(async (p) => {
-      const { data } = await supabase
-        .from("measurements")
-        .select("timestamp")
-        .eq("monitoring_point_id", p.id)
-        .order("timestamp", { ascending: false })
-        .limit(1);
-      if (data && data.length > 0) lastReadingByPoint.set(p.id, data[0].timestamp);
+      const last = await getLatestReadingAt(p.id);
+      if (last) lastReadingByPoint.set(p.id, last);
     }),
   );
 

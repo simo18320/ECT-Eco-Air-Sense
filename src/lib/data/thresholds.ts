@@ -1,7 +1,13 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import type { Tables } from "@/types/database";
 
-export async function getEffectiveThresholds(yachtId: string): Promise<Tables<"thresholds">[]> {
+/**
+ * Company limits with this yacht's overrides on top. Cached per request:
+ * scoring asks for it once per monitoring point, and the answer is the same
+ * for the whole yacht.
+ */
+export const getEffectiveThresholds = cache(async (yachtId: string): Promise<Tables<"thresholds">[]> => {
   const supabase = await createClient();
 
   const { data: yacht } = await supabase.from("yachts").select("company_id").eq("id", yachtId).single();
@@ -17,4 +23,4 @@ export async function getEffectiveThresholds(yachtId: string): Promise<Tables<"t
   for (const t of yachtThresholds ?? []) byParam.set(t.parameter, t);
 
   return Array.from(byParam.values());
-}
+});
