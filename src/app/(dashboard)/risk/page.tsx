@@ -208,7 +208,7 @@ export default async function RiskPage({
             <h3 className="font-medium text-foreground mb-1">Limitations</h3>
             <p>
               All thresholds are configurable in Settings and sourced from general indoor air quality guidance
-              (ASHRAE, WELL Building Standard, WHO/EPA air quality breakpoints) — adjust them for your vessel's
+              (ASHRAE, WELL Building Standard, WHO/EPA air quality breakpoints) — adjust them for your vessel&apos;s
               specific requirements and jurisdiction. Scores are recalculated from the latest available reading
               and the trailing 7-day history; they reflect what the sensors report, not a physical inspection.
             </p>

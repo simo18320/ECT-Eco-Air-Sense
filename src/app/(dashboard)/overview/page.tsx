@@ -18,6 +18,7 @@ import { getLatestExecutiveBriefing } from "@/lib/data/ai-insights";
 import { AircareSyncButton } from "@/components/import/aircare-sync-button";
 import { SilentSensorsAlert } from "@/components/sensors/silent-sensors-alert";
 import { getSilenceSummary, type SilenceSummary } from "@/lib/sensors/silence";
+import { getLatestReadingAt } from "@/lib/data/latest-reading";
 
 export default async function OverviewPage() {
   const user = await getCurrentUser();
@@ -50,7 +51,7 @@ export default async function OverviewPage() {
         .maybeSingle(),
       getYachtScores(yacht.id),
       getLatestExecutiveBriefing(yacht.id),
-      getSilenceSummary(supabase, yacht.id),
+      getSilenceSummary(supabase, yacht.id, getLatestReadingAt),
     ]);
     silence = silenceSummary;
     health = summary;

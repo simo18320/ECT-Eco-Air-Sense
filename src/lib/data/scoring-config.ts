@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import {
   DEFAULT_COMFORT_WEIGHTS,
@@ -15,7 +16,8 @@ export type ScoringWeightsBundle = {
   overall: OverallWeights;
 };
 
-export async function getScoringWeights(yachtId: string): Promise<ScoringWeightsBundle> {
+/** Cached per request, so every caller in one render shares one lookup (and one object). */
+export const getScoringWeights = cache(async (yachtId: string): Promise<ScoringWeightsBundle> => {
   const supabase = await createClient();
   const { data: yacht } = await supabase.from("yachts").select("company_id").eq("id", yachtId).single();
 
@@ -58,4 +60,4 @@ export async function getScoringWeights(yachtId: string): Promise<ScoringWeights
     luxuryPerception: luxuryPerception ? { ...DEFAULT_LUXURY_WEIGHTS, ...luxuryPerception } : DEFAULT_LUXURY_WEIGHTS,
     overall: overall ? { ...DEFAULT_OVERALL_WEIGHTS, ...overall } : DEFAULT_OVERALL_WEIGHTS,
   };
-}
+});

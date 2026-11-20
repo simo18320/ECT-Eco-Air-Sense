@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { getLatestReadingAt } from "@/lib/data/latest-reading";
 
 export type YachtHealthSummary = {
   sensorsOnline: number;
@@ -30,21 +31,17 @@ export async function getYachtHealthSummary(yachtId: string): Promise<YachtHealt
   let sensorsOnline = 0;
 
   if (activePointIds.length > 0) {
-    const since = new Date(Date.now() - FRESHNESS_WINDOW_MS).toISOString();
-    // Checked per point (limit 1, existence only) rather than one unordered
-    // batch across every point — a point with disproportionately more
-    // readings in the freshness window can (and did, on real data) fill the
-    // entire batch by itself, crowding out points that also have recent
-    // data and making them wrongly count as offline.
+    const since = Date.now() - FRESHNESS_WINDOW_MS;
+    // Checked per point rather than one unordered batch across every point —
+    // a point with disproportionately more readings in the freshness window
+    // can (and did, on real data) fill the entire batch by itself, crowding
+    // out points that also have recent data and making them wrongly count as
+    // offline. The per-point lookup is shared with the other sensor checks
+    // on the page.
     const results = await Promise.all(
       activePointIds.map(async (pointId) => {
-        const { data } = await supabase
-          .from("measurements")
-          .select("monitoring_point_id")
-          .eq("monitoring_point_id", pointId)
-          .gte("timestamp", since)
-          .limit(1);
-        return data != null && data.length > 0;
+        const last = await getLatestReadingAt(pointId);
+        return last != null && Date.parse(last) >= since;
       }),
     );
     sensorsOnline = results.filter(Boolean).length;

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 import { fetchAllRows } from "@/lib/supabase/paginate";
 import { getEffectiveThresholds } from "@/lib/data/thresholds";
@@ -57,21 +58,49 @@ async function getRecentSeries(pointId: string, parameter: string, days = 7): Pr
   return rows.map((r) => r.value);
 }
 
-export async function getPointScores(
+/**
+ * Open alerts of the whole yacht in one query, grouped by point — instead of
+ * one query per point. Cached per request.
+ */
+const getOpenAlertsByPoint = cache(
+  async (yachtId: string): Promise<Map<string, { parameter: string; severity: string }[]>> => {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("alerts")
+      .select("monitoring_point_id, parameter, severity")
+      .eq("yacht_id", yachtId)
+      .eq("status", "open");
+
+    const byPoint = new Map<string, { parameter: string; severity: string }[]>();
+    for (const a of data ?? []) {
+      if (!a.monitoring_point_id) continue;
+      const list = byPoint.get(a.monitoring_point_id) ?? [];
+      list.push({ parameter: a.parameter, severity: a.severity });
+      byPoint.set(a.monitoring_point_id, list);
+    }
+    return byPoint;
+  },
+);
+
+/**
+ * Cached per request: pages such as Risk ask for the yacht average and for
+ * every point's scores, which used to compute each point twice.
+ */
+export const getPointScores = cache(async (
   pointId: string,
   yachtId: string,
   weights?: ScoringWeightsBundle,
-): Promise<PointScores> {
-  const supabase = await createClient();
+): Promise<PointScores> => {
   const resolvedWeights = weights ?? (await getScoringWeights(yachtId));
 
-  const [readings, thresholdsList, { data: openAlerts }, recentTemp, recentHumidity] = await Promise.all([
+  const [readings, thresholdsList, alertsByPoint, recentTemp, recentHumidity] = await Promise.all([
     getCurrentReadingsForPoint(pointId),
     getEffectiveThresholds(yachtId),
-    supabase.from("alerts").select("parameter, severity").eq("monitoring_point_id", pointId).eq("status", "open"),
+    getOpenAlertsByPoint(yachtId),
     getRecentSeries(pointId, "temperature"),
     getRecentSeries(pointId, "relative_humidity"),
   ]);
+  const openAlerts = alertsByPoint.get(pointId) ?? [];
 
   const thresholds: Record<string, ThresholdLike> = {};
   for (const t of thresholdsList) thresholds[t.parameter] = t;
@@ -107,7 +136,7 @@ export async function getPointScores(
   );
 
   return { comfort, biologicalSafety, mouldRisk, luxuryPerception, overall };
-}
+});
 
 export type YachtScores = {
   comfort: number | null;
@@ -124,7 +153,7 @@ function average(values: (number | null)[]): number | null {
   return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length);
 }
 
-export async function getYachtScores(yachtId: string): Promise<YachtScores> {
+export const getYachtScores = cache(async (yachtId: string): Promise<YachtScores> => {
   const supabase = await createClient();
   const { data: points } = await supabase
     .from("monitoring_points")
@@ -148,4 +177,4 @@ export async function getYachtScores(yachtId: string): Promise<YachtScores> {
     overall: average(allScores.map((s) => s.overall.score)),
     pointsScored: allScores.filter((s) => s.overall.score != null).length,
   };
-}
+});

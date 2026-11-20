@@ -1,4 +1,5 @@
 import { cache } from "react";
+import { after } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export type CurrentUser = {
@@ -32,20 +33,30 @@ export const getCurrentUser = cache(async (): Promise<CurrentUser | null> => {
 
   // One row per user per day — "distinct visits", not raw page loads. RLS
   // restricts insert to the caller's own user_id, so this is safe to run
-  // with the regular authenticated client. Never let a tracking hiccup
+  // with the regular authenticated client. The request is sent now (while
+  // the request's cookies are still readable) but nothing waits for it:
+  // `after` only keeps the function alive until it lands, so tracking no
+  // longer adds a round trip to every page. Never let a tracking hiccup
   // break the page: log and move on.
-  try {
-    await supabase.from("user_visit_log").upsert(
-      {
-        user_id: profile.id,
-        company_id: profile.company_id,
-        visit_date: new Date().toISOString().slice(0, 10),
-      },
-      { onConflict: "user_id,visit_date", ignoreDuplicates: true },
-    );
-  } catch (err) {
-    console.error("Failed to log platform visit:", err);
-  }
+  const visitLogged = Promise.resolve(
+    supabase
+      .from("user_visit_log")
+      .upsert(
+        {
+          user_id: profile.id,
+          company_id: profile.company_id,
+          visit_date: new Date().toISOString().slice(0, 10),
+        },
+        { onConflict: "user_id,visit_date", ignoreDuplicates: true },
+      )
+      .then(
+        ({ error }) => {
+          if (error) console.error("Failed to log platform visit:", error.message);
+        },
+        (err: unknown) => console.error("Failed to log platform visit:", err),
+      ),
+  );
+  after(() => visitLogged);
 
   return {
     id: profile.id,
