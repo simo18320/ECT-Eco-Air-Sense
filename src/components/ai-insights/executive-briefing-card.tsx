@@ -9,8 +9,13 @@ const PRIORITY_VARIANT: Record<string, "destructive" | "outline" | "secondary"> 
 };
 
 export function ExecutiveBriefingCard({ briefing }: { briefing: Tables<"ai_insights"> }) {
-  const meta = briefing.source_data_ref as { engine?: string; mainRisk?: string } | null;
+  const meta = briefing.source_data_ref as { engine?: string; mainRisk?: string; fallbackReason?: string } | null;
   const isFallback = meta?.engine === "rule_based_fallback";
+  // Older briefings have no reason stored; only a missing key means "not configured".
+  const fallbackNote =
+    meta?.fallbackReason && meta.fallbackReason !== "ANTHROPIC_API_KEY is not set"
+      ? " · rule-based summary (the AI model could not be reached)"
+      : " · rule-based summary (no AI model configured yet)";
 
   return (
     <Card className="bg-sidebar text-sidebar-foreground border-sidebar-border">
@@ -33,7 +38,7 @@ export function ExecutiveBriefingCard({ briefing }: { briefing: Tables<"ai_insig
             hour: "2-digit",
             minute: "2-digit",
           })}
-          {isFallback && " · rule-based summary (no AI model configured yet)"}
+          {isFallback && fallbackNote}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3 text-sm">
